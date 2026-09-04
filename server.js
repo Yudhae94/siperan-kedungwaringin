@@ -400,6 +400,19 @@ app.patch('/api/section-approvals/:section', auth, write, (req, res) => {
   res.json({ section, status, notes: notes || '', updated_at: new Date().toISOString() })
 })
 app.get('/api/events', auth, (req, res) => res.json(db.prepare('SELECT * FROM events').all()))
+app.post('/api/events', auth, write, (req, res) => {
+  const { date, title, type } = req.body || {}
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) || !String(title || '').trim()) {
+    return res.status(400).json({ error: 'Tanggal dan nama kegiatan wajib diisi.' })
+  }
+  const record = db.prepare('INSERT INTO events (date,title,type) VALUES (?,?,?)').run(date, title.trim(), String(type || 'Lainnya').trim())
+  res.status(201).json(db.prepare('SELECT * FROM events WHERE id=?').get(record.lastInsertRowid))
+})
+app.delete('/api/events/:id', auth, superAdminOnly, (req, res) => {
+  const deleted = db.prepare('DELETE FROM events WHERE id=?').run(req.params.id)
+  if (!deleted.changes) return res.status(404).json({ error: 'Kegiatan tidak ditemukan.' })
+  res.json({ ok: true })
+})
 
 app.get('/api/uploads/:filename', auth, (req, res) => {
   const filePath = path.join(uploadsDir, req.params.filename)

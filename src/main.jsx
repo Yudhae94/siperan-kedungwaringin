@@ -61,6 +61,7 @@ const navGroups = [
     { id: 'evaluasi', label: 'Evaluasi & Pelaporan', icon: BarChart3 },
   ]},
   { title: 'Layanan', items: [
+    { id: 'kalender', label: 'Kalender Kegiatan', icon: CalendarDays },
     { id: 'unduhan', label: 'Pusat Unduhan', icon: CloudDownload },
     { id: 'arsip', label: 'Arsip Renja & DPA', icon: FolderOpen },
     { id: 'pengaturan', label: 'Pengaturan & Bantuan', icon: Settings2 },
@@ -151,6 +152,12 @@ function App() {
     if (!currentUser) return
     Promise.all([api('/programs'), api('/docs'), api('/monthly-reports'), api('/events'), api('/log'), api('/users'), api('/admin-contacts'), api('/section-approvals')]).then(([p,d,r,e,l,u,c,a]) => { setPrograms(p); setDocs(d); setReports(r); setEvents(e); setAuthLog(l); setUsers(u); setAdminContacts(c.length ? c : defaultAdminContacts); setApprovalBoard(a.length ? a : defaultApprovalBoard) }).catch(() => notify('Gagal memuat data server'))
   }, [currentUser])
+  useEffect(() => {
+    if (!currentUser) return
+    const refreshEvents = () => api('/events').then(setEvents).catch(() => {})
+    const timer = setInterval(refreshEvents, 5000)
+    return () => clearInterval(timer)
+  }, [currentUser])
 
   const filteredByUnit = useMemo(() => programs.filter(p => unitFilter === 'Semua Unit' || p.bidang === unitFilter), [programs, unitFilter])
   const filtered = filteredByUnit.filter(p => `${p.nama} ${p.bidang} ${p.kode}`.toLowerCase().includes(query.toLowerCase()))
@@ -234,6 +241,27 @@ function App() {
       })
       .catch(error => notify(error.message || 'Gagal menghapus dokumen'))
   }
+  function addEvent(e) {
+    if (!canWrite) return
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    api('/events', { method: 'POST', body: JSON.stringify({ date: form.get('date'), title: form.get('title'), type: form.get('type') }) })
+      .then(event => {
+        setEvents(list => [...list, event].sort((a, b) => a.date.localeCompare(b.date)))
+        setModal(null)
+        notify('Kegiatan berhasil ditambahkan ke kalender')
+      })
+      .catch(error => notify(error.message || 'Gagal menambahkan kegiatan'))
+  }
+  function deleteEvent(id) {
+    if (currentUser.role !== 'Super Admin') return
+    api(`/events/${id}`, { method: 'DELETE' })
+      .then(() => {
+        setEvents(list => list.filter(event => event.id !== id))
+        notify('Kegiatan berhasil dihapus')
+      })
+      .catch(error => notify(error.message || 'Gagal menghapus kegiatan'))
+  }
   function approveSection(section, status) {
     if (!canWrite) return
     const notes = status === 'Disetujui' ? 'Persetujuan diterbitkan oleh admin untuk sesi ini.' : 'Persetujuan ditolak dan perlu revisi lanjutan.'
@@ -276,6 +304,7 @@ function App() {
       <header className="topbar"><button className="hamburger" onClick={() => setSidebar(true)}><Menu size={21}/></button><div className="breadcrumbs"><span>SIPERAN</span><b>/</b><strong>{navGroups.flatMap(g => g.items).find(i => i.id === active)?.label}</strong></div><div className="top-actions"><div className="role-select"><ShieldCheck size={16}/><span>{currentUser.role}</span></div><button className="theme-switch" onClick={() => setTheme(curr => curr === 'light' ? 'dark' : 'light')} aria-label="Ganti tema"><span className="theme-icon">{theme === 'light' ? <Moon size={16}/> : <Sun size={16}/>}</span><span>{theme === 'light' ? 'Mode gelap' : 'Mode terang'}</span></button><div className="notification-wrap"><button className="icon-btn notification" onClick={() => setNotificationsOpen(v => !v)} aria-label="Lihat notifikasi"><Bell size={19}/>{notificationCount > 0 && <span className="notification-badge">{notificationCount}</span>}</button>{notificationsOpen && <div className="notification-panel"><div className="notification-head"><b>Notifikasi</b><span>{notificationCount} perlu tindak lanjut</span></div>{notifications.map(item => <div className="notification-item" key={item.id}><div className="notification-copy"><b>{item.title}</b><small>{item.detail}</small></div><button className="secondary xs" onClick={() => { setActive(item.href); setNotificationsOpen(false) }}>{item.action}</button></div>)}</div>}</div><div className="top-avatar">{currentUser.name.slice(0, 2).toUpperCase()}</div></div></header>
       <div className="content">
         {active === 'dashboard' && <Dashboard programs={filteredByUnit} docs={docs} events={events} overall={overall} totalPagu={totalPagu} totalRealisasi={totalRealisasi} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
+        {active === 'kalender' && <CalendarPage events={events} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} onAdd={() => setModal('event')} onDelete={deleteEvent} />}
         {active === 'perencanaan' && <Planning programs={filtered} query={query} setQuery={setQuery} onAdd={() => setModal('program')} onDelete={removeProgram} onProgress={openProgressEditor} canWrite={canWrite} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
         {active === 'pengendalian' && <Control programs={programs} setPrograms={setPrograms} onUpload={() => setModal('doc')} canWrite={canWrite} notify={notify} />}
         {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('doc')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
@@ -287,6 +316,7 @@ function App() {
     {modal === 'program' && canWrite && <Modal title="E-Usulan Kegiatan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addProgram}><label>Nama kegiatan<input required name="nama" placeholder="Contoh: Rehabilitasi drainase"/></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Target indikator<input required name="target" type="number" min="1" /></label><label>Pagu anggaran<input required name="pagu" type="number" min="0" /></label><label>Penanggung jawab<input required name="penanggung" placeholder="Nama jabatan/tim"/></label><label>Batas waktu<input required name="deadline" type="date"/></label><button className="primary full" type="submit"><Plus size={17}/> Simpan E-Usulan</button></form></Modal>}
     {progressProgram && canWrite && <Modal title={`Atur progress ${progressProgram.kode}`} onClose={() => setProgressProgram(null)}><div className="progress-editor"><p><b>{progressProgram.nama}</b></p><label>Progress saat ini: <strong>{progressValue}%</strong><input type="range" min="0" max="100" step="10" value={progressValue} onChange={e => setProgressValue(Number(e.target.value))}/></label><div className="step-grid">{[0,10,20,30,40,50,60,70,80,90,100].map(step => <button type="button" key={step} className={`step-btn ${progressValue === step ? 'active' : ''}`} onClick={() => setProgressValue(step)}>{step}%</button>)}</div><div className="modal-actions"><button className="secondary" type="button" onClick={() => setProgressProgram(null)}>Batal</button><button className="primary" type="button" onClick={saveProgress}>Simpan progress</button></div></div></Modal>}
     {modal === 'doc' && canWrite && <Modal title="Unggah dokumen" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addDoc}><label>Jenis dokumen<select name="type"><option>Renstra</option><option>Renja</option><option>DPA</option><option>RAK</option><option>Perencanaan</option><option>Pelaporan</option><option>Evaluasi</option><option>Lainnya</option></select></label><label className="upload-field">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
+    {modal === 'event' && canWrite && <Modal title="Tambah kegiatan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addEvent}><label className="full">Nama kegiatan<input required name="title" placeholder="Contoh: Rapat koordinasi bulanan" /></label><label>Tanggal<input required name="date" type="date" /></label><label>Jenis kegiatan<select name="type"><option>Rapat</option><option>Deadline</option><option>Monitoring</option><option>Evaluasi</option><option>Lainnya</option></select></label><button className="primary full" type="submit"><Plus size={17}/> Simpan kegiatan</button></form></Modal>}
     {toast && <div className="toast"><Check size={17}/>{toast}</div>}
   </div>
 }
@@ -325,6 +355,11 @@ function Dashboard({ programs, docs, events, overall, totalPagu, totalRealisasi,
   </>
 }
 function ActivityItem({ icon: Icon, title, text, time }) { return <div className="timeline-row"><div className="timeline-icon"><Icon size={16}/></div><div><b>{title}</b><small>{text}</small></div><time>{time}</time></div> }
+
+function CalendarPage({ events, canWrite, isSuperAdmin, onAdd, onDelete }) {
+  const sortedEvents = [...events].sort((a, b) => a.date.localeCompare(b.date))
+  return <><PageTitle eyebrow="Layanan kegiatan" title="Kalender Kegiatan"><div className="title-actions-inline"><span className="subtitle">Diperbarui otomatis setiap 5 detik</span>{canWrite && <Button onClick={onAdd}><Plus size={17}/> Tambah kegiatan</Button>}</div></PageTitle><section className="card table-card"><div className="table-toolbar"><div><h2>Agenda Kecamatan Kedungwaringin</h2><p>{events.length} kegiatan terjadwal</p></div><CalendarDays className="muted-icon"/></div><div className="download-list">{sortedEvents.length ? sortedEvents.map(event => { const eventDate = new Date(`${event.date}T00:00:00`); return <div className="download-row" key={event.id}><div className="date-box"><b>{eventDate.getDate()}</b><small>{new Intl.DateTimeFormat('id-ID', { month: 'short' }).format(eventDate).toUpperCase()}</small></div><div><b>{event.title}</b><small>{new Intl.DateTimeFormat('id-ID', { dateStyle: 'full' }).format(eventDate)}</small></div><span className={`tag ${event.type === 'Deadline' ? 'orange' : ''}`}>{event.type}</span>{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(event.id)}>Hapus</button>}</div> }) : <p className="muted">Belum ada kegiatan terjadwal.</p>}</div></section></>
+}
 
 function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canWrite, currentUnit, onUnitFilterChange, unitFilterOptions, onNavigate }) {
   const [showRkaForm, setShowRkaForm] = useState(false)
