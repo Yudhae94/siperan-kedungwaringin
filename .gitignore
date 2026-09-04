@@ -1,0 +1,5 @@
+siperan.sqlite
+siperan.sqlite-shm
+siperan.sqlite-wal
+node_modules
+dist
