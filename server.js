@@ -21,7 +21,15 @@ CREATE TABLE IF NOT EXISTS admin_contacts (id INTEGER PRIMARY KEY AUTOINCREMENT,
 CREATE TABLE IF NOT EXISTS doc_reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER NOT NULL, reviewer TEXT NOT NULL, action TEXT NOT NULL, notes TEXT, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS section_approvals (id INTEGER PRIMARY KEY AUTOINCREMENT, section TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'Belum disetujui', notes TEXT, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS rka_forms (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, tahun TEXT NOT NULL, satuan TEXT NOT NULL, formulir TEXT NOT NULL, total REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS rka_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, rka_id INTEGER NOT NULL, kode TEXT, uraian TEXT, koefisien TEXT, satuan TEXT, harga TEXT, ppn TEXT, jumlah TEXT, FOREIGN KEY(rka_id) REFERENCES rka_forms(id) ON DELETE CASCADE);`)
+CREATE TABLE IF NOT EXISTS rka_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, rka_id INTEGER NOT NULL, kode TEXT, uraian TEXT, koefisien TEXT, satuan TEXT, harga TEXT, ppn TEXT, jumlah TEXT, FOREIGN KEY(rka_id) REFERENCES rka_forms(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS monthly_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, periode TEXT NOT NULL, pagu REAL NOT NULL DEFAULT 0, realisasi_keuangan REAL NOT NULL DEFAULT 0, realisasi_fisik REAL NOT NULL DEFAULT 0, catatan TEXT, created_at TEXT NOT NULL);`)
+db.exec(`CREATE TABLE IF NOT EXISTS login_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT,
+  success INTEGER NOT NULL DEFAULT 0,
+  reason TEXT NOT NULL,
+  at TEXT NOT NULL
+)`)
 for (const column of ['preview', 'file_path', 'mime_type', 'storage_name']) {
   try {
     db.exec(`ALTER TABLE docs ADD COLUMN ${column} TEXT`)
@@ -29,6 +37,42 @@ for (const column of ['preview', 'file_path', 'mime_type', 'storage_name']) {
     // ignore if column already exists
   }
 }
+
+// E-Usulan Kegiatan is the database-facing name for the former program list.
+db.exec(`CREATE TABLE IF NOT EXISTS e_usulan_kegiatan (
+  id INTEGER PRIMARY KEY,
+  kode TEXT UNIQUE NOT NULL,
+  nama TEXT NOT NULL,
+  bidang TEXT,
+  target REAL NOT NULL,
+  realisasi REAL NOT NULL DEFAULT 0,
+  pagu REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  penanggung TEXT,
+  deadline TEXT
+);
+INSERT OR IGNORE INTO e_usulan_kegiatan
+  SELECT id, kode, nama, bidang, target, realisasi, pagu, status, penanggung, deadline
+  FROM programs;
+CREATE TRIGGER IF NOT EXISTS programs_to_e_usulan_insert
+AFTER INSERT ON programs
+BEGIN
+  INSERT OR REPLACE INTO e_usulan_kegiatan
+    (id, kode, nama, bidang, target, realisasi, pagu, status, penanggung, deadline)
+  VALUES (NEW.id, NEW.kode, NEW.nama, NEW.bidang, NEW.target, NEW.realisasi, NEW.pagu, NEW.status, NEW.penanggung, NEW.deadline);
+END;
+CREATE TRIGGER IF NOT EXISTS programs_to_e_usulan_update
+AFTER UPDATE ON programs
+BEGIN
+  INSERT OR REPLACE INTO e_usulan_kegiatan
+    (id, kode, nama, bidang, target, realisasi, pagu, status, penanggung, deadline)
+  VALUES (NEW.id, NEW.kode, NEW.nama, NEW.bidang, NEW.target, NEW.realisasi, NEW.pagu, NEW.status, NEW.penanggung, NEW.deadline);
+END;
+CREATE TRIGGER IF NOT EXISTS programs_to_e_usulan_delete
+AFTER DELETE ON programs
+BEGIN
+  DELETE FROM e_usulan_kegiatan WHERE id = OLD.id;
+END;`)
 
 const bidangOptions = [
   'Sekretariat - Bagian Umum dan Kepegawaian',
@@ -138,11 +182,37 @@ const storage = multer.diskStorage({
 })
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } })
 
+app.get('/api/auth/captcha', (req, res) => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let value = ''
+  for (let i = 0; i < 6; i += 1) value += chars[Math.floor(Math.random() * chars.length)]
+  req.session.loginCaptcha = value
+  res.json({ captcha: value })
+})
+
+app.use('/api/auth/login', (req, res, next) => {
+  const username = String(req.body?.username || '').trim()
+  const answer = String(req.body?.captcha || '').trim().toUpperCase()
+  const expected = String(req.session.loginCaptcha || '').toUpperCase()
+  const logAttempt = (success, reason) => db.prepare('INSERT INTO login_attempts (username,success,reason,at) VALUES (?,?,?,?)').run(username, success ? 1 : 0, reason, new Date().toISOString())
+  delete req.session.loginCaptcha
+  if (!answer || answer !== expected) {
+    logAttempt(false, 'CAPTCHA_INVALID')
+    return res.status(401).json({ error: 'CAPTCHA tidak sesuai.' })
+  }
+  req.loginAttemptLog = logAttempt
+  next()
+})
+
 app.post('/api/auth/login', (req, res) => {
   const u = db.prepare('SELECT id,username,name,role FROM users WHERE username=? AND password=?').get(req.body.username, req.body.password)
-  if (!u) return res.status(401).json({ error: 'Username atau password tidak sesuai.' })
+  if (!u) {
+    req.loginAttemptLog?.(false, 'INVALID_CREDENTIALS')
+    return res.status(401).json({ error: 'Username atau password tidak sesuai.' })
+  }
   req.session.user = u
   db.prepare('INSERT INTO auth_log(username,role,action,at) VALUES (?,?,?,?)').run(u.username, u.role, 'SIGN_IN', new Date().toISOString())
+  req.loginAttemptLog?.(true, 'SIGN_IN')
   res.json(u)
 })
 
@@ -238,6 +308,25 @@ app.post('/api/rka', auth, write, (req, res) => {
   res.status(201).json({ ...saved, rows: savedRows })
 })
 
+app.get('/api/monthly-reports', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM monthly_reports ORDER BY id DESC').all()
+  res.json(rows)
+})
+
+app.post('/api/monthly-reports', auth, write, (req, res) => {
+  const { periode, pagu, realisasi_keuangan, realisasi_fisik, catatan } = req.body || {}
+  if (!periode) return res.status(400).json({ error: 'Periode laporan wajib diisi.' })
+  const insert = db.prepare('INSERT INTO monthly_reports (periode,pagu,realisasi_keuangan,realisasi_fisik,catatan,created_at) VALUES (?,?,?,?,?,?)').run(
+    periode,
+    Number(pagu) || 0,
+    Number(realisasi_keuangan) || 0,
+    Number(realisasi_fisik) || 0,
+    catatan || '',
+    new Date().toISOString()
+  )
+  res.status(201).json(db.prepare('SELECT * FROM monthly_reports WHERE id = ?').get(insert.lastInsertRowid))
+})
+
 app.get('/api/docs', auth, (req, res) => {
   const docs = db.prepare('SELECT * FROM docs ORDER BY id DESC').all()
   res.json(docs.map(doc => ({ ...doc, review_log: db.prepare('SELECT * FROM doc_reviews WHERE doc_id=? ORDER BY id DESC').all(doc.id) })))
@@ -288,6 +377,18 @@ app.post('/api/docs/:id/review', auth, write, (req, res) => {
   res.status(201).json({ id: record.lastInsertRowid, ...payload, doc_id: Number(req.params.id) })
 })
 
+app.delete('/api/docs/:id', auth, superAdminOnly, (req, res) => {
+  const doc = db.prepare('SELECT storage_name FROM docs WHERE id=?').get(req.params.id)
+  if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan.' })
+  if (doc.storage_name) {
+    const storedPath = path.join(uploadsDir, path.basename(doc.storage_name))
+    if (fs.existsSync(storedPath)) fs.unlinkSync(storedPath)
+  }
+  db.prepare('DELETE FROM doc_reviews WHERE doc_id=?').run(req.params.id)
+  db.prepare('DELETE FROM docs WHERE id=?').run(req.params.id)
+  res.json({ ok: true })
+})
+
 app.get('/api/doc-reviews', auth, (req, res) => res.json(db.prepare('SELECT * FROM doc_reviews ORDER BY id DESC').all()))
 app.get('/api/section-approvals', auth, (req, res) => res.json(db.prepare('SELECT * FROM section_approvals ORDER BY id').all()))
 app.patch('/api/section-approvals/:section', auth, write, (req, res) => {
@@ -310,5 +411,24 @@ app.get('/api/uploads/:filename', auth, (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')))
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')))
 
-const port = process.env.PORT || 3000
+const getAvailablePort = async (startPort) => {
+  const net = await import('node:net')
+  return new Promise((resolve, reject) => {
+    const tryPort = (port) => {
+      const server = net.default.createServer()
+      server.unref()
+      server.on('error', () => {
+        if (port >= startPort + 20) return reject(new Error(`Tidak ada port tersedia di sekitar ${startPort}.`))
+        tryPort(port + 1)
+      })
+      server.listen(port, () => {
+        server.close(() => resolve(port))
+      })
+    }
+    tryPort(startPort)
+  })
+}
+
+const requestedPort = Number(process.env.PORT || 3000)
+const port = await getAvailablePort(requestedPort)
 app.listen(port, () => console.log(`SIPERAN server running at http://localhost:${port}`))

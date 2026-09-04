@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { jsPDF } from 'jspdf'
 import {
   Activity, AlertTriangle, BarChart3, Bell, CalendarDays, Check, ChevronDown,
   CircleHelp, ClipboardCheck, CloudDownload, FileDown, FileText, FolderOpen,
@@ -61,6 +62,7 @@ const navGroups = [
   ]},
   { title: 'Layanan', items: [
     { id: 'unduhan', label: 'Pusat Unduhan', icon: CloudDownload },
+    { id: 'arsip', label: 'Arsip Renja & DPA', icon: FolderOpen },
     { id: 'pengaturan', label: 'Pengaturan & Bantuan', icon: Settings2 },
   ]},
 ]
@@ -91,6 +93,28 @@ const pct = (a, b) => Math.round((a / b) * 100)
 const formatDate = date => new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }).format(date)
 const greetingFor = hour => hour < 11 ? 'Selamat Pagi' : hour < 15 ? 'Selamat Siang' : hour < 18 ? 'Selamat Sore' : 'Selamat Malam'
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error) {
+    console.error('SIPERAN render error:', error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div className="error-fallback"><h2>Terjadi masalah pada tampilan</h2><p>Silakan refresh halaman atau masuk kembali ke aplikasi.</p><button className="primary" onClick={() => window.location.reload()}>Muat ulang</button></div>
+    }
+    return this.props.children
+  }
+}
+
 function App() {
   const [users, setUsers] = useState([])
   const [currentUser, setCurrentUser] = useState(null)
@@ -99,6 +123,7 @@ function App() {
   const [active, setActive] = useState('dashboard')
   const [programs, setPrograms] = useState([])
   const [docs, setDocs] = useState([])
+  const [reports, setReports] = useState([])
   const [events, setEvents] = useState([])
   const [approvalBoard, setApprovalBoard] = useState(defaultApprovalBoard)
   const [role, setRole] = useState('User')
@@ -106,6 +131,8 @@ function App() {
   const [unitFilter, setUnitFilter] = useState('Semua Unit')
   const unitFilterOptions = ['Semua Unit', ...bidangOptions]
   const [modal, setModal] = useState(null)
+  const [progressProgram, setProgressProgram] = useState(null)
+  const [progressValue, setProgressValue] = useState(0)
   const [toast, setToast] = useState('')
   const [sidebar, setSidebar] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -122,7 +149,7 @@ function App() {
   }, [])
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([api('/programs'), api('/docs'), api('/events'), api('/log'), api('/users'), api('/admin-contacts'), api('/section-approvals')]).then(([p,d,e,l,u,c,a]) => { setPrograms(p); setDocs(d); setEvents(e); setAuthLog(l); setUsers(u); setAdminContacts(c.length ? c : defaultAdminContacts); setApprovalBoard(a.length ? a : defaultApprovalBoard) }).catch(() => notify('Gagal memuat data server'))
+    Promise.all([api('/programs'), api('/docs'), api('/monthly-reports'), api('/events'), api('/log'), api('/users'), api('/admin-contacts'), api('/section-approvals')]).then(([p,d,r,e,l,u,c,a]) => { setPrograms(p); setDocs(d); setReports(r); setEvents(e); setAuthLog(l); setUsers(u); setAdminContacts(c.length ? c : defaultAdminContacts); setApprovalBoard(a.length ? a : defaultApprovalBoard) }).catch(() => notify('Gagal memuat data server'))
   }, [currentUser])
 
   const filteredByUnit = useMemo(() => programs.filter(p => unitFilter === 'Semua Unit' || p.bidang === unitFilter), [programs, unitFilter])
@@ -196,6 +223,17 @@ function App() {
       })
       .catch(e => notify(e.message))
   }
+  function deleteDoc(id) {
+    if (currentUser.role !== 'Super Admin') return
+    const doc = docs.find(item => item.id === id)
+    if (!doc || !window.confirm(`Hapus dokumen "${doc.name}"?`)) return
+    api(`/docs/${id}`, { method: 'DELETE' })
+      .then(() => {
+        setDocs(list => list.filter(item => item.id !== id))
+        notify('Dokumen berhasil dihapus')
+      })
+      .catch(error => notify(error.message || 'Gagal menghapus dokumen'))
+  }
   function approveSection(section, status) {
     if (!canWrite) return
     const notes = status === 'Disetujui' ? 'Persetujuan diterbitkan oleh admin untuk sesi ini.' : 'Persetujuan ditolak dan perlu revisi lanjutan.'
@@ -209,6 +247,23 @@ function App() {
     if (!canWrite) return
     api(`/programs/${id}`, {method:'DELETE'}).then(() => { setPrograms(programs.filter(program => program.id !== id)); notify('Program berhasil dihapus') })
   }
+  function openProgressEditor(program) {
+    setProgressProgram(program)
+    setProgressValue(program.target ? Math.min(100, Math.round((program.realisasi / program.target) * 100)) : 0)
+  }
+  function saveProgress() {
+    if (!progressProgram || !canWrite) return
+    const realisasi = Math.round((progressValue / 100) * progressProgram.target)
+    const status = realisasi >= progressProgram.target ? 'Selesai' : progressValue >= 75 ? 'Berjalan' : 'Perlu perhatian'
+    const updated = { ...progressProgram, realisasi, status }
+    api(`/programs/${progressProgram.id}`, { method: 'PATCH', body: JSON.stringify(updated) })
+      .then(() => {
+        setPrograms(list => list.map(item => item.id === updated.id ? updated : item))
+        setProgressProgram(null)
+        notify(`Progress ${updated.kode} disimpan: ${progressValue}%`)
+      })
+      .catch(error => notify(error.message || 'Gagal menyimpan progress'))
+  }
 
   return <div className="app-shell">
     <aside className={`sidebar ${sidebar ? 'open' : ''}`}>
@@ -221,28 +276,35 @@ function App() {
       <header className="topbar"><button className="hamburger" onClick={() => setSidebar(true)}><Menu size={21}/></button><div className="breadcrumbs"><span>SIPERAN</span><b>/</b><strong>{navGroups.flatMap(g => g.items).find(i => i.id === active)?.label}</strong></div><div className="top-actions"><div className="role-select"><ShieldCheck size={16}/><span>{currentUser.role}</span></div><button className="theme-switch" onClick={() => setTheme(curr => curr === 'light' ? 'dark' : 'light')} aria-label="Ganti tema"><span className="theme-icon">{theme === 'light' ? <Moon size={16}/> : <Sun size={16}/>}</span><span>{theme === 'light' ? 'Mode gelap' : 'Mode terang'}</span></button><div className="notification-wrap"><button className="icon-btn notification" onClick={() => setNotificationsOpen(v => !v)} aria-label="Lihat notifikasi"><Bell size={19}/>{notificationCount > 0 && <span className="notification-badge">{notificationCount}</span>}</button>{notificationsOpen && <div className="notification-panel"><div className="notification-head"><b>Notifikasi</b><span>{notificationCount} perlu tindak lanjut</span></div>{notifications.map(item => <div className="notification-item" key={item.id}><div className="notification-copy"><b>{item.title}</b><small>{item.detail}</small></div><button className="secondary xs" onClick={() => { setActive(item.href); setNotificationsOpen(false) }}>{item.action}</button></div>)}</div>}</div><div className="top-avatar">{currentUser.name.slice(0, 2).toUpperCase()}</div></div></header>
       <div className="content">
         {active === 'dashboard' && <Dashboard programs={filteredByUnit} docs={docs} events={events} overall={overall} totalPagu={totalPagu} totalRealisasi={totalRealisasi} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
-        {active === 'perencanaan' && <Planning programs={filtered} query={query} setQuery={setQuery} onAdd={() => setModal('program')} onDelete={removeProgram} canWrite={canWrite} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
+        {active === 'perencanaan' && <Planning programs={filtered} query={query} setQuery={setQuery} onAdd={() => setModal('program')} onDelete={removeProgram} onProgress={openProgressEditor} canWrite={canWrite} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
         {active === 'pengendalian' && <Control programs={programs} setPrograms={setPrograms} onUpload={() => setModal('doc')} canWrite={canWrite} notify={notify} />}
-        {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('doc')} onVerify={verifyDoc} onApprove={approveSection} canWrite={canWrite} />}
-        {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} canWrite={canWrite} />}
+        {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('doc')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
+        {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
+        {active === 'arsip' && <PlanningArchive docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'pengaturan' && <Settings notify={notify} currentUser={currentUser} users={users} authLog={authLog} adminContacts={adminContacts} setAdminContacts={setAdminContacts} />}
       </div>
     </main>
-    {modal === 'program' && canWrite && <Modal title="Tambah program kerja" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addProgram}><label>Nama program<input required name="nama" placeholder="Contoh: Rehabilitasi drainase"/></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Target indikator<input required name="target" type="number" min="1" /></label><label>Pagu anggaran<input required name="pagu" type="number" min="0" /></label><label>Penanggung jawab<input required name="penanggung" placeholder="Nama jabatan/tim"/></label><label>Batas waktu<input required name="deadline" type="date"/></label><button className="primary full" type="submit"><Plus size={17}/> Simpan program</button></form></Modal>}
-    {modal === 'doc' && canWrite && <Modal title="Unggah dokumen" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addDoc}><label>Jenis dokumen<select name="type"><option>Perencanaan</option><option>Pelaporan</option><option>Evaluasi</option><option>Lainnya</option></select></label><label className="upload-field">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
+    {modal === 'program' && canWrite && <Modal title="E-Usulan Kegiatan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addProgram}><label>Nama kegiatan<input required name="nama" placeholder="Contoh: Rehabilitasi drainase"/></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Target indikator<input required name="target" type="number" min="1" /></label><label>Pagu anggaran<input required name="pagu" type="number" min="0" /></label><label>Penanggung jawab<input required name="penanggung" placeholder="Nama jabatan/tim"/></label><label>Batas waktu<input required name="deadline" type="date"/></label><button className="primary full" type="submit"><Plus size={17}/> Simpan E-Usulan</button></form></Modal>}
+    {progressProgram && canWrite && <Modal title={`Atur progress ${progressProgram.kode}`} onClose={() => setProgressProgram(null)}><div className="progress-editor"><p><b>{progressProgram.nama}</b></p><label>Progress saat ini: <strong>{progressValue}%</strong><input type="range" min="0" max="100" step="10" value={progressValue} onChange={e => setProgressValue(Number(e.target.value))}/></label><div className="step-grid">{[0,10,20,30,40,50,60,70,80,90,100].map(step => <button type="button" key={step} className={`step-btn ${progressValue === step ? 'active' : ''}`} onClick={() => setProgressValue(step)}>{step}%</button>)}</div><div className="modal-actions"><button className="secondary" type="button" onClick={() => setProgressProgram(null)}>Batal</button><button className="primary" type="button" onClick={saveProgress}>Simpan progress</button></div></div></Modal>}
+    {modal === 'doc' && canWrite && <Modal title="Unggah dokumen" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addDoc}><label>Jenis dokumen<select name="type"><option>Renstra</option><option>Renja</option><option>DPA</option><option>RAK</option><option>Perencanaan</option><option>Pelaporan</option><option>Evaluasi</option><option>Lainnya</option></select></label><label className="upload-field">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
     {toast && <div className="toast"><Check size={17}/>{toast}</div>}
   </div>
 }
 
 function Login({ users, onLogin }) {
   const [error, setError] = useState('')
+  const [captcha, setCaptcha] = useState('')
+  const [captchaInput, setCaptchaInput] = useState('')
+  const loadCaptcha = () => api('/auth/captcha').then(data => setCaptcha(data.captcha)).catch(() => setError('CAPTCHA gagal dimuat.'))
+  useEffect(() => { loadCaptcha() }, [])
   function submit(e) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    api('/auth/login', { method:'POST', body:JSON.stringify({username:form.get('username'), password:form.get('password')}) })
-      .then(onLogin).catch(() => setError('Username atau password tidak sesuai.'))
+    api('/auth/login', { method:'POST', body:JSON.stringify({username:form.get('username'), password:form.get('password'), captcha: captchaInput}) })
+      .then(onLogin)
+      .catch(error => { setError(error.message || 'Login gagal.'); setCaptchaInput(''); loadCaptcha() })
   }
-  return <main className="login-page"><section className="login-card"><div className="login-brand"><div className="brand-mark">S</div><div><b>SIPERAN</b><small>KEDUNGWARINGIN</small></div></div><div className="login-heading"><span className="eyebrow">Sistem Perencanaan dan Pelaporan Terpadu</span><h1>Selamat Datang</h1><p>Masuk untuk mengelola kinerja Kecamatan Kedungwaringin.</p></div><form className="login-form" onSubmit={submit}><label>Username<input name="username" required autoComplete="username" placeholder="Masukkan username" /></label><label>Password<input name="password" required type="password" autoComplete="current-password" placeholder="Masukkan password" /></label>{error && <p className="login-error">{error}</p>}<button className="primary full" type="submit"><LogIn size={17}/> Masuk ke aplikasi</button></form><div className="login-hint"><LockKeyhole size={15}/><span>Akun demo: <b>user/user123</b>, <b>admin/admin123</b>, <b>superadmin/superadmin123</b></span></div></section></main>
+  return <main className="login-page"><section className="login-card"><div className="login-brand"><div className="brand-mark">S</div><div><b>SIPERAN</b><small>KEDUNGWARINGIN</small></div></div><div className="login-heading"><span className="eyebrow">Sistem Perencanaan dan Pelaporan Terpadu</span><h1>Selamat Datang</h1><p>Masuk untuk mengelola kinerja Kecamatan Kedungwaringin.</p></div><form className="login-form" onSubmit={submit}><label>Username<input name="username" required autoComplete="username" placeholder="Masukkan username" /></label><label>Password<input name="password" required type="password" autoComplete="current-password" placeholder="Masukkan password" /></label><div className="captcha-box"><div className="captcha-code" aria-label="Kode CAPTCHA">{captcha || '------'}</div><button className="secondary captcha-refresh" type="button" onClick={loadCaptcha}>Ganti kode</button></div><label>Kode CAPTCHA<input required value={captchaInput} onChange={e => setCaptchaInput(e.target.value.toUpperCase())} autoComplete="off" placeholder="Masukkan huruf dan angka" /></label>{error && <p className="login-error">{error}</p>}<button className="primary full" type="submit"><LogIn size={17}/> Masuk ke aplikasi</button></form><div className="login-hint"><LockKeyhole size={15}/><span>Akun demo: <b>user/user123</b>, <b>admin/admin123</b>, <b>superadmin/superadmin123</b></span></div></section></main>
 }
 
 function PageTitle({ eyebrow, title, children }) { return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1></div><div className="title-actions">{children}</div></div> }
@@ -264,10 +326,10 @@ function Dashboard({ programs, docs, events, overall, totalPagu, totalRealisasi,
 }
 function ActivityItem({ icon: Icon, title, text, time }) { return <div className="timeline-row"><div className="timeline-icon"><Icon size={16}/></div><div><b>{title}</b><small>{text}</small></div><time>{time}</time></div> }
 
-function Planning({ programs, query, setQuery, onAdd, onDelete, canWrite, currentUnit, onUnitFilterChange, unitFilterOptions, onNavigate }) {
+function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canWrite, currentUnit, onUnitFilterChange, unitFilterOptions, onNavigate }) {
   const [showRkaForm, setShowRkaForm] = useState(false)
 
-  return <><PageTitle eyebrow="Siklus kinerja · Tahun Anggaran 2026" title="Perencanaan"><div className="title-actions-inline">{canWrite && <Button onClick={onAdd}><Plus size={17}/> Tambah program</Button>}<button className="secondary" type="button" onClick={() => setShowRkaForm(v => !v)}>{showRkaForm ? 'Tutup form RKA' : 'Input RKA'}</button><label className="filter-select-wrap"><span>Unit</span><select value={currentUnit} onChange={e => onUnitFilterChange(e.target.value)}>{unitFilterOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label></div></PageTitle><div className="callout"><div className="callout-icon"><Zap size={19}/></div><div><b>Rencana kerja tahun 2026 sedang berjalan</b><p>Lengkapi indikator dan pagu untuk menjaga konsistensi antara rencana dan realisasi.</p></div><button onClick={() => onNavigate('pengendalian')}>Buka pengendalian →</button></div>{showRkaForm && <RkaForm />}<section className="card table-card"><div className="table-toolbar"><div><h2>Daftar program kerja</h2><p>{programs.length} program terdaftar</p></div><div className="search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari program..." /></div></div><ProgramTable programs={programs} canWrite={canWrite} onDelete={onDelete}/></section></> }
+  return <><PageTitle eyebrow="Siklus kinerja · Tahun Anggaran 2026" title="Perencanaan"><div className="title-actions-inline">{canWrite && <Button onClick={onAdd}><Plus size={17}/> E-Usulan Kegiatan</Button>}<button className="secondary" type="button" onClick={() => setShowRkaForm(v => !v)}>{showRkaForm ? 'Tutup form RKA' : 'Input RKA'}</button><label className="filter-select-wrap"><span>Unit</span><select value={currentUnit} onChange={e => onUnitFilterChange(e.target.value)}>{unitFilterOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label></div></PageTitle><div className="callout"><div className="callout-icon"><Zap size={19}/></div><div><b>Rencana kerja tahun 2026 sedang berjalan</b><p>Lengkapi indikator dan pagu untuk menjaga konsistensi antara rencana dan realisasi.</p></div><button onClick={() => onNavigate('pengendalian')}>Buka pengendalian →</button></div>{showRkaForm && <RkaForm />}<section className="card table-card"><div className="table-toolbar"><div><h2>Daftar E-Usulan Kegiatan</h2><p>{programs.length} usulan kegiatan terdaftar</p></div><div className="search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari usulan kegiatan..." /></div></div><ProgramTable programs={programs} canWrite={canWrite} onDelete={onDelete} onProgress={onProgress}/></section></> }
 
 function RkaForm() {
   const defaultRows = [
@@ -381,7 +443,7 @@ function RkaForm() {
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={`${row.kode || 'row'}-${index}`}>
+            <tr key={row.id || `rka-row-${index}`}>
               <td><input value={row.kode} onChange={e => updateRow(index, 'kode', e.target.value)} /></td>
               <td><input value={row.uraian} onChange={e => updateRow(index, 'uraian', e.target.value)} /></td>
               <td><input value={row.koefisien} onChange={e => updateRow(index, 'koefisien', e.target.value)} /></td>
@@ -408,11 +470,11 @@ function RkaForm() {
     {status && <p className="muted" style={{ marginTop: 12 }}>{status}</p>}
   </section>
 }
-function ProgramTable({ programs, canWrite, onDelete }) { return <div className="table-scroll"><table><thead><tr><th>Kode / Program</th><th>Bidang</th><th>Pagu anggaran</th><th>Progress</th><th>Status</th><th>Penanggung jawab</th>{canWrite && <th>Aksi</th>}</tr></thead><tbody>{programs.map(p => <tr key={p.id}><td><b>{p.kode}</b><span>{p.nama}</span></td><td>{p.bidang}</td><td>{rupiah(p.pagu)}</td><td><div className="progress-cell"><div className="progress"><i style={{width: `${Math.min(100, pct(p.realisasi, p.target))}%`}}/></div><small>{pct(p.realisasi, p.target)}%</small></div></td><td><span className={`status ${p.status === 'Selesai' ? 'done' : p.status === 'Perlu perhatian' ? 'warn' : ''}`}>{p.status}</span></td><td>{p.penanggung}</td>{canWrite && <td><button className="table-action danger" onClick={() => onDelete(p.id)}>Hapus</button></td>}</tr>)}</tbody></table></div> }
+function ProgramTable({ programs, canWrite, onDelete, onProgress }) { return <div className="table-scroll"><table><thead><tr><th>Kode / Program</th><th>Bidang</th><th>Pagu anggaran</th><th>Progress</th><th>Status</th><th>Penanggung jawab</th>{canWrite && <th>Aksi</th>}</tr></thead><tbody>{programs.map(p => <tr key={p.id}><td><b>{p.kode}</b><span>{p.nama}</span></td><td>{p.bidang}</td><td>{rupiah(p.pagu)}</td><td><button type="button" className="progress-cell progress-button" onClick={() => canWrite && onProgress(p)} title={canWrite ? 'Klik untuk mengatur progress' : 'Progress'}><span className="progress"><i style={{width: `${Math.min(100, pct(p.realisasi, p.target))}%`}}/></span><small>{pct(p.realisasi, p.target)}%</small></button></td><td><span className={`status ${p.status === 'Selesai' ? 'done' : p.status === 'Perlu perhatian' ? 'warn' : ''}`}>{p.status}</span></td><td>{p.penanggung}</td>{canWrite && <td><button className="table-action danger" onClick={() => onDelete(p.id)}>Hapus</button></td>}</tr>)}</tbody></table></div> }
 
-function Control({ programs, setPrograms, onUpload, canWrite, notify }) { const [selected, setSelected] = useState(programs[0]?.id); const current = programs.find(p => p.id === selected) || programs[0]; const currentPercent = current && current.target ? Math.min(100, Math.round((current.realisasi / current.target) * 100)) : 0; const updatePercent = (nextPercent) => { if (!canWrite || !current) return; const nextRealisasi = Math.round((nextPercent / 100) * current.target); const nextStatus = nextRealisasi >= current.target ? 'Selesai' : nextPercent >= 75 ? 'Berjalan' : 'Perlu perhatian'; const n = { ...current, realisasi: nextRealisasi, status: nextStatus }; api(`/programs/${current.id}`,{method:'PATCH',body:JSON.stringify(n)}).then(() => { setPrograms(programs.map(p => p.id === current.id ? n : p)); notify(`Realisasi diatur menjadi ${nextPercent}%`) }) }; return <><PageTitle eyebrow="Siklus kinerja · Monitoring berkala" title="Pengendalian & Realisasi">{canWrite && <Button secondary onClick={onUpload}><Upload size={17}/> Unggah bukti realisasi</Button>}</PageTitle><div className="control-layout"><section className="card program-list"><div className="card-head"><div><h2>Pilih program</h2><p>Perbarui capaian fisik secara berkala</p></div></div>{programs.map(p => <button key={p.id} className={`program-option ${selected === p.id ? 'selected' : ''}`} onClick={() => setSelected(p.id)}><div><b>{p.kode}</b><span>{p.nama}</span></div><strong>{pct(p.realisasi, p.target)}%</strong></button>)}</section><section className="card detail-card">{current && <><div className="detail-top"><div><span className="eyebrow">{current.kode} · {current.bidang}</span><h2>{current.nama}</h2><p>Penanggung jawab: {current.penanggung}</p></div><span className={`status ${current.status === 'Perlu perhatian' ? 'warn' : current.status === 'Selesai' ? 'done' : ''}`}>{current.status}</span></div><div className="big-progress"><div className="big-progress-head"><span>Realisasi indikator</span><b>{pct(current.realisasi, current.target)}%</b></div><div className="progress"><i style={{width: `${pct(current.realisasi, current.target)}%`}}/></div><div className="metric-row"><div><small>Realisasi</small><b>{current.realisasi} <em>/ {current.target} target</em></b></div><div><small>Pagu</small><b>{rupiah(current.pagu)}</b></div><div><small>Batas waktu</small><b>{new Date(current.deadline).toLocaleDateString('id-ID', {day:'numeric', month:'long'})}</b></div></div></div><div className="update-box"><h3>Input realisasi terbaru</h3><p>{canWrite ? 'Pilih tingkat capaian dari 10% sampai 100% untuk melihat progres secara jelas.' : 'Mode baca saja: Anda tidak memiliki izin mengubah realisasi.'}</p>{canWrite && <><div className="step-grid">{[0,10,20,30,40,50,60,70,80,90,100].map(step => <button key={step} className={`step-btn ${currentPercent === step ? 'active' : ''}`} onClick={() => updatePercent(step)}>{step}%</button>)}</div><div className="slider-wrap"><label>Capaian saat ini: <strong>{currentPercent}%</strong></label><input type="range" min="0" max="100" step="10" value={currentPercent} onChange={e => updatePercent(Number(e.target.value))} /></div><div className="quick-actions"><button className="secondary" onClick={() => notify('Bukti realisasi siap diunggah')}>Lampirkan bukti</button></div></>}</div></>}</section></div></> }
+function Control({ programs, setPrograms, onUpload, canWrite, notify }) { const [selected, setSelected] = useState(programs[0]?.id); const current = programs.find(p => p.id === selected) || programs[0]; const currentPercent = current && current.target ? Math.min(100, Math.round((current.realisasi / current.target) * 100)) : 0; const usedBudget = current ? Math.min(current.pagu, Math.round((currentPercent / 100) * current.pagu)) : 0; const remainingBudget = current ? Math.max(0, current.pagu - usedBudget) : 0; const updatePercent = (nextPercent) => { if (!canWrite || !current) return; const nextRealisasi = Math.round((nextPercent / 100) * current.target); const nextStatus = nextRealisasi >= current.target ? 'Selesai' : nextPercent >= 75 ? 'Berjalan' : 'Perlu perhatian'; const n = { ...current, realisasi: nextRealisasi, status: nextStatus }; api(`/programs/${current.id}`,{method:'PATCH',body:JSON.stringify(n)}).then(() => { setPrograms(programs.map(p => p.id === current.id ? n : p)); notify(`Realisasi diatur menjadi ${nextPercent}%`) }) }; return <><PageTitle eyebrow="Siklus kinerja · Monitoring berkala" title="Pengendalian & Realisasi">{canWrite && <Button secondary onClick={onUpload}><Upload size={17}/> Unggah bukti realisasi</Button>}</PageTitle><div className="control-layout"><section className="card program-list"><div className="card-head"><div><h2>Pilih program</h2><p>Perbarui capaian fisik secara berkala</p></div></div>{programs.map(p => <button key={p.id} className={`program-option ${selected === p.id ? 'selected' : ''}`} onClick={() => setSelected(p.id)}><div><b>{p.kode}</b><span>{p.nama}</span></div><strong>{pct(p.realisasi, p.target)}%</strong></button>)}</section><section className="card detail-card">{current && <><div className="detail-top"><div><span className="eyebrow">{current.kode} · {current.bidang}</span><h2>{current.nama}</h2><p>Penanggung jawab: {current.penanggung}</p></div><span className={`status ${current.status === 'Perlu perhatian' ? 'warn' : current.status === 'Selesai' ? 'done' : ''}`}>{current.status}</span></div><div className="big-progress"><div className="big-progress-head"><span>Realisasi indikator</span><b>{pct(current.realisasi, current.target)}%</b></div><div className="progress"><i style={{width: `${pct(current.realisasi, current.target)}%`}}/></div><div className="metric-row"><div><small>Realisasi fisik</small><b>{current.realisasi} <em>/ {current.target} target</em></b></div><div><small>Pagu anggaran</small><b>{rupiah(current.pagu)}</b></div><div><small>Batas waktu</small><b>{new Date(current.deadline).toLocaleDateString('id-ID', {day:'numeric', month:'long'})}</b></div></div><div className="budget-summary"><div><small>Pagu terpakai</small><b>{rupiah(usedBudget)}</b><span>{currentPercent}% dari pagu</span></div><div><small>Sisa pagu</small><b>{rupiah(remainingBudget)}</b><span>{100 - currentPercent}% belum terpakai</span></div></div></div><div className="update-box"><h3>Input realisasi terbaru</h3><p>{canWrite ? 'Pilih tingkat capaian dari 10% sampai 100% untuk melihat progres secara jelas.' : 'Mode baca saja: Anda tidak memiliki izin mengubah realisasi.'}</p>{canWrite && <><div className="step-grid">{[0,10,20,30,40,50,60,70,80,90,100].map(step => <button key={step} className={`step-btn ${currentPercent === step ? 'active' : ''}`} onClick={() => updatePercent(step)}>{step}%</button>)}</div><div className="slider-wrap"><label>Capaian saat ini: <strong>{currentPercent}%</strong></label><input type="range" min="0" max="100" step="10" value={currentPercent} onChange={e => updatePercent(Number(e.target.value))} /></div><div className="quick-actions"><button className="secondary" onClick={() => notify('Bukti realisasi siap diunggah')}>Lampirkan bukti</button></div></>}</div></>}</section></div></> }
 
-function Evaluation({ programs, docs, approvalBoard, onUpload, onVerify, onApprove, canWrite }) {
+function Evaluation({ programs, docs, approvalBoard, onUpload, onVerify, onDelete, onApprove, canWrite, isSuperAdmin }) {
   const [selectedDoc, setSelectedDoc] = useState(null)
 
   const downloadDoc = doc => {
@@ -439,8 +501,8 @@ function Evaluation({ programs, docs, approvalBoard, onUpload, onVerify, onAppro
   return <><PageTitle eyebrow="Siklus kinerja · Akuntabilitas" title="Evaluasi & Pelaporan">{canWrite && <Button onClick={onUpload}><Upload size={17}/> Unggah laporan</Button>}</PageTitle>
     <div className="eval-stats"><div className="card eval-score"><span className="eyebrow">Nilai kinerja sementara</span><strong>82,6</strong><span className="score-up">▲ 4,2 poin dari semester lalu</span><div className="score-track"><i style={{width:'82.6%'}}/></div><small>Baik · Berdasarkan 4 program dan 12 indikator</small></div><div className="card"><div className="card-head"><div><h2>Kepatuhan pelaporan</h2><p>Status dokumen tahun berjalan</p></div><ClipboardCheck className="muted-icon"/></div><div className="compliance"><div><b>75%</b><span>Tepat waktu</span></div><div><b>2/3</b><span>Terverifikasi</span></div><div><b>0</b><span>Ditolak</span></div></div></div></div>
     {canWrite && <section className="card approval-card"><div className="card-head"><div><h2>Persetujuan per seksi / subbag</h2><p>Hanya Admin dan Super Admin yang dapat menyetujui atau menolak.</p></div><ShieldCheck className="muted-icon"/></div><div className="approval-list">{approvalBoard.map(item => <div className="approval-row" key={item.section}><div className="approval-text"><b>{item.section}</b><small>{item.notes || 'Belum ada catatan'}</small></div><span className={`status ${item.status === 'Disetujui' ? 'done' : 'warn'}`}>{item.status}</span><div className="approval-actions"><button className="secondary xs" type="button" onClick={() => onApprove(item.section, 'Disetujui')}>Setujui</button><button className="table-action danger" type="button" onClick={() => onApprove(item.section, 'Ditolak')}>Tolak</button></div></div>)}</div></section>}
-    <section className="card review-card"><div className="card-head"><div><h2>Dokumen yang diunggah</h2><p>Daftar berkas terbaru untuk ditinjau dan diverifikasi</p></div><FileText className="muted-icon"/></div><div className="review-list">{docs.map(d => <div className="review-item" key={d.id}><div className="file-name"><div className="file-icon"><FileText size={16}/></div><div><b>{d.name}</b><small>{d.type} · {d.size} · {d.date}</small></div></div><div className="review-meta"><span className={`status ${d.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{d.status}</span></div><div className="review-actions"><button className="secondary xs" type="button" onClick={() => setSelectedDoc(d)}>Lihat</button>{canWrite && d.status !== 'Terverifikasi' && <button className="table-action" type="button" onClick={() => onVerify(d.id)}><Check size={15}/> Review</button>}<button className="secondary xs" type="button" onClick={() => downloadDoc(d)}><FileDown size={15}/> Unduh</button></div></div>)}</div></section>
-    <section className="card table-card"><div className="card-head"><div><h2>Dokumen pelaporan</h2><p>Kelola dokumen dan status verifikasi</p></div><FileText className="muted-icon"/></div><div className="table-scroll"><table><thead><tr><th>Nama dokumen</th><th>Jenis</th><th>Ukuran</th><th>Tanggal</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{docs.map(d => <tr key={d.id}><td><div className="file-name"><div className="file-icon"><FileText size={16}/></div><b>{d.name}</b></div></td><td>{d.type}</td><td>{d.size}</td><td>{d.date}</td><td><span className={`status ${d.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{d.status}</span></td><td><div className="row-actions">{canWrite && d.status !== 'Terverifikasi' && <button className="table-action" onClick={() => onVerify(d.id)}><Check size={15}/> Verifikasi</button>}<button className="secondary xs" type="button" onClick={() => setSelectedDoc(d)}>Lihat</button><button className="secondary xs" type="button" onClick={() => downloadDoc(d)}><FileDown size={15}/> Unduh</button></div></td></tr>)}</tbody></table></div></section>
+    <section className="card review-card"><div className="card-head"><div><h2>Dokumen yang diunggah</h2><p>Daftar berkas terbaru untuk ditinjau dan diverifikasi</p></div><FileText className="muted-icon"/></div><div className="review-list">{docs.map(d => <div className="review-item" key={d.id}><div className="file-name"><div className="file-icon"><FileText size={16}/></div><div><b>{d.name}</b><small>{d.type} · {d.size} · {d.date}</small></div></div><div className="review-meta"><span className={`status ${d.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{d.status}</span></div><div className="review-actions"><button className="secondary xs" type="button" onClick={() => setSelectedDoc(d)}>Lihat</button>{canWrite && d.status !== 'Terverifikasi' && <button className="table-action" type="button" onClick={() => onVerify(d.id)}><Check size={15}/> Review</button>}<button className="secondary xs" type="button" onClick={() => downloadDoc(d)}><FileDown size={15}/> Unduh</button>{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(d.id)}>Hapus</button>}</div></div>)}</div></section>
+    <section className="card table-card"><div className="card-head"><div><h2>Dokumen pelaporan</h2><p>Kelola dokumen dan status verifikasi</p></div><FileText className="muted-icon"/></div><div className="table-scroll"><table><thead><tr><th>Nama dokumen</th><th>Jenis</th><th>Ukuran</th><th>Tanggal</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{docs.map(d => <tr key={d.id}><td><div className="file-name"><div className="file-icon"><FileText size={16}/></div><b>{d.name}</b></div></td><td>{d.type}</td><td>{d.size}</td><td>{d.date}</td><td><span className={`status ${d.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{d.status}</span></td><td><div className="row-actions">{canWrite && d.status !== 'Terverifikasi' && <button className="table-action" onClick={() => onVerify(d.id)}><Check size={15}/> Verifikasi</button>}<button className="secondary xs" type="button" onClick={() => setSelectedDoc(d)}>Lihat</button><button className="secondary xs" type="button" onClick={() => downloadDoc(d)}><FileDown size={15}/> Unduh</button>{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(d.id)}>Hapus</button>}</div></td></tr>)}</tbody></table></div></section>
     {selectedDoc && <Modal title="Preview dokumen" onClose={() => setSelectedDoc(null)}><div className="doc-preview"><div className="preview-badge">{selectedDoc.status}</div><h3>{selectedDoc.name}</h3><div className="doc-meta"><span><b>Jenis:</b> {selectedDoc.type}</span><span><b>Ukuran:</b> {selectedDoc.size}</span><span><b>Tanggal:</b> {selectedDoc.date}</span></div><p>{selectedDoc.preview || 'Dokumen ini sedang dipantau dalam proses evaluasi dan pelaporan. Silakan tinjau kelengkapan, kesesuaian data, dan status verifikasi sebelum ditutup atau disetujui.'}</p>{(selectedDoc.review_log || []).length > 0 && <div className="review-log"><h4>Riwayat review</h4>{(selectedDoc.review_log || []).map(log => <div className="log-entry" key={log.id}><b>{log.action}</b><small>{log.reviewer} · {new Date(log.at).toLocaleString('id-ID')}</small><p>{log.notes}</p></div>)}</div>}<div className="review-actions modal-actions"><button className="secondary" type="button" onClick={() => setSelectedDoc(null)}>Tutup</button><button className="secondary" type="button" onClick={() => downloadDoc(selectedDoc)}>Unduh file</button>{canWrite && selectedDoc.status !== 'Terverifikasi' && <button className="primary" type="button" onClick={() => { onVerify(selectedDoc.id); setSelectedDoc(null) }}><Check size={15}/> Review dokumen</button>}</div></div></Modal>}
   </>
 }
@@ -455,7 +517,69 @@ function makePdfDownload(name, lines) {
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n `).join('\n')}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
   const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${name.replace(/\.[^.]+$/, '')}.pdf`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
-function Downloads({ docs, onUpload, canWrite }) { const download = d => { if (d.file_path) { window.open(d.file_path, '_blank', 'noopener,noreferrer'); return; } makePdfDownload(d.name, ['SIPERAN KEDUNGWARINGIN', `Dokumen: ${d.name}`, `Jenis: ${d.type}`, `Status: ${d.status}`, `Tanggal: ${d.date}`]); }; const downloadTemplate = () => makePdfDownload('Template-Laporan-SIPERAN', ['SIPERAN KEDUNGWARINGIN', 'TEMPLATE LAPORAN REALISASI', '', 'Program Kegiatan:', 'Pagu Anggaran:', 'Realisasi Keuangan:', 'Realisasi Fisik:', 'Catatan:']); return <><PageTitle eyebrow="Pusat dokumen" title="Pusat Unduhan">{canWrite && <Button onClick={onUpload}><Upload size={17}/> Tambah dokumen</Button>}</PageTitle><div className="download-banner"><div className="download-art"><CloudDownload size={32}/></div><div><h2>Semua dokumen kerja, terorganisir</h2><p>Unduh template dan berkas pelaporan Kecamatan Kedungwaringin dalam format PDF.</p></div><Button secondary onClick={downloadTemplate}>Unduh template PDF</Button></div><section className="card table-card"><div className="table-toolbar"><div><h2>Dokumen tersedia</h2><p>Semua file dapat dibuka langsung atau diunduh sesuai kebutuhan</p></div><div className="search"><Search size={17}/><input placeholder="Cari dokumen..." /></div></div><div className="download-list">{docs.map(d => <div className="download-row" key={d.id}><div className="file-icon"><FileText size={18}/></div><div><b>{d.name}</b><small>{d.type} · {d.size} · {d.date}</small></div><span className={`status ${d.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{d.status}</span><button className="icon-btn" title={d.file_path ? 'Buka file' : 'Unduh PDF'} onClick={() => download(d)}><FileDown size={18}/></button></div>)}</div></section></> }
+function makeRkaTemplatePdf() {
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const left = 10
+  const right = pageWidth - 10
+  const widths = [32, 102, 28, 28, 28, 20, 39]
+  const headers = ['Kode Rekening', 'Uraian', 'Koefisien', 'Satuan', 'Harga', 'PPN', 'Jumlah']
+  const rows = [
+    ['5', 'BELANJA DAERAH', '', '', '', '', 'Rp.'],
+    ['5.1', 'BELANJA OPERASI', '', '', '', '', 'Rp.'],
+    ['5.1.02', 'Belanja Barang dan Jasa', '', '', '', '', 'Rp.'],
+    ['5.1.02.01', 'Belanja Barang', '', '', '', '', 'Rp.'],
+    ['5.1.02.01.01', 'Belanja Barang Pakai Habis', '', '', '', '', 'Rp.'],
+    ['5.1.02.01.01.0026', 'Belanja Alat/Bahan untuk Kegiatan Kantor - Bahan Cetak', '', '', '', '', 'Rp.'],
+    ['[#]', 'Belanja Jilid\nSumber Dana: PENDAPATAN ASLI DAERAH (PAD)', '1', 'Buku', '', '', 'Rp.'],
+    ['[#]', 'Belanja Penggandaan\nSumber Dana: PENDAPATAN ASLI DAERAH (PAD)', '1', 'Lembar', '', '', 'Rp.'],
+    ['5.1.02.01.0052', 'Belanja Makanan dan Minuman Rapat', '', '', '', '', 'Rp.'],
+    ['[#]', 'Belanja Makan dan Minum Rapat Evaluasi Kinerja PPA & SAPA', '1', 'Orang / Kali', '', '', 'Rp.'],
+  ]
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(11)
+  pdf.text('RENCANA KERJA DAN ANGGARAN SATUAN KERJA PERANGKAT DAERAH', pageWidth / 2, 13, { align: 'center' })
+  pdf.text('MANUAL', pageWidth / 2, 19, { align: 'center' })
+  pdf.text('Formulir', right - 55, 13, { align: 'center' })
+  pdf.text('RKA MANUAL - RINCIAN BELANJA SKPD', right - 55, 19, { align: 'center' })
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(9)
+  pdf.text('Pemerintah Kabupaten Bekasi Tahun Anggaran 2025', pageWidth / 2, 28, { align: 'center' })
+  pdf.text('Rincian Anggaran Belanja Kegiatan', pageWidth / 2, 40, { align: 'center' })
+  pdf.text('Satuan Kerja Perangkat Daerah', pageWidth / 2, 46, { align: 'center' })
+
+  let y = 54
+  const drawRow = (cells, height, bold = false) => {
+    let x = left
+    pdf.setFont('helvetica', bold ? 'bold' : 'normal')
+    pdf.setFontSize(8)
+    cells.forEach((cell, index) => {
+      pdf.rect(x, y, widths[index], height)
+      const lines = String(cell).split('\n')
+      lines.forEach((line, lineIndex) => pdf.text(line, x + 2, y + 5 + lineIndex * 4))
+      x += widths[index]
+    })
+    y += height
+  }
+  drawRow(headers, 9, true)
+  rows.forEach(row => drawRow(row, row[1].includes('\n') ? 13 : 9, row[0].length < 8 && !row[0].includes('#')))
+  drawRow(['', '', '', '', '', 'Jumlah Anggaran Sub Kegiatan', 'Rp.'], 10, true)
+  pdf.save('Template-RKA-Manual-Kedungwaringin.pdf')
+}
+function Downloads({ docs, onUpload, onDelete, canWrite, isSuperAdmin }) { const download = d => { if (d.file_path) { window.open(d.file_path, '_blank', 'noopener,noreferrer'); return; } makePdfDownload(d.name, ['SIPERAN KEDUNGWARINGIN', `Dokumen: ${d.name}`, `Jenis: ${d.type}`, `Status: ${d.status}`, `Tanggal: ${d.date}`]); }; const downloadTemplate = () => makeRkaTemplatePdf(); return <><PageTitle eyebrow="Pusat dokumen" title="Pusat Unduhan">{canWrite && <Button onClick={onUpload}><Upload size={17}/> Tambah dokumen</Button>}</PageTitle><div className="download-banner"><div className="download-art"><CloudDownload size={32}/></div><div><h2>Semua dokumen kerja, terorganisir</h2><p>Unduh template RKA manual dalam format PDF sesuai format rincian belanja SKPD.</p></div><Button secondary onClick={downloadTemplate}>Unduh template PDF</Button></div><section className="card table-card"><div className="table-toolbar"><div><h2>Dokumen tersedia</h2><p>Semua file dapat dibuka langsung atau diunduh sesuai kebutuhan</p></div><div className="search"><Search size={17}/><input placeholder="Cari dokumen..." /></div></div><div className="download-list">{docs.map(d => <div className="download-row" key={d.id}><div className="file-icon"><FileText size={18}/></div><div><b>{d.name}</b><small>{d.type} · {d.size} · {d.date}</small></div><span className={`status ${d.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{d.status}</span><button className="icon-btn" title={d.file_path ? 'Buka file' : 'Unduh PDF'} onClick={() => download(d)}><FileDown size={18}/></button>{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(d.id)}>Hapus</button>}</div>)}</div></section></> }
+function PlanningArchive({ docs, onUpload, onDelete, canWrite, isSuperAdmin }) {
+  const categories = ['Semua Arsip', 'Renstra', 'Renja', 'DPA', 'RAK']
+  const [category, setCategory] = useState('Semua Arsip')
+  const archiveDocs = docs.filter(doc => category === 'Semua Arsip' ? ['Renstra', 'Renja', 'DPA', 'RAK'].includes(doc.type) : doc.type === category)
+  const download = doc => doc.file_path
+    ? window.open(doc.file_path, '_blank', 'noopener,noreferrer')
+    : makePdfDownload(doc.name, ['SIPERAN KEDUNGWARINGIN', `Arsip ${doc.type}`, `Dokumen: ${doc.name}`, `Status: ${doc.status}`])
+  return <><PageTitle eyebrow="Bank data perencanaan" title="Arsip Renja & DPA">{canWrite && <Button onClick={onUpload}><Upload size={17}/> Unggah arsip</Button>}</PageTitle>
+    <div className="callout"><div className="callout-icon"><FolderOpen size={19}/></div><div><b>Arsip dokumen perencanaan Kecamatan Kedungwaringin</b><p>Renstra, Renja, DPA, dan RAK tersusun dalam kategori khusus agar mudah dipantau.</p></div></div>
+    <div className="archive-tabs">{categories.map(item => <button type="button" key={item} className={category === item ? 'primary' : 'secondary'} onClick={() => setCategory(item)}>{item}</button>)}</div>
+    <section className="card table-card"><div className="card-head"><div><h2>{category}</h2><p>{archiveDocs.length} dokumen tersedia</p></div><FolderOpen className="muted-icon"/></div><div className="download-list">{archiveDocs.length ? archiveDocs.map(doc => <div className="download-row" key={doc.id}><div className="file-icon"><FileText size={18}/></div><div><b>{doc.name}</b><small>{doc.type} · {doc.size} · {doc.date}</small></div><span className={`status ${doc.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{doc.status}</span><button className="icon-btn" title="Buka arsip" onClick={() => download(doc)}><FileDown size={18}/></button>{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(doc.id)}>Hapus</button>}</div>) : <p className="muted">Belum ada dokumen pada kategori ini. Unggah dokumen dan pilih jenis arsipnya.</p>}</div></section>
+  </>
+}
 function Settings({ currentUser, users, authLog, adminContacts, setAdminContacts, notify }) {
   const [form, setForm] = useState({ type: 'whatsapp', value: '' })
   const [editingId, setEditingId] = useState(null)
@@ -509,4 +633,12 @@ function Settings({ currentUser, users, authLog, adminContacts, setAdminContacts
   return <><PageTitle eyebrow="Konfigurasi sistem" title="Pengaturan & Bantuan"/><div className="settings-grid"><section className="card settings-card"><div className="card-head"><div><h2>Profil & akses</h2><p>Akun dan kewenangan yang sedang digunakan.</p></div><Users className="muted-icon"/></div><div className="permission"><ShieldCheck size={18}/><div><b>{currentUser.name}</b><small>{currentUser.username} · {currentUser.role}</small></div></div><p className="muted">Data akun dan sesi tersimpan pada database lokal perangkat ini.</p></section><section className="card settings-card"><div className="card-head"><div><h2>Kontak admin</h2><p>Hubungi admin SIPERAN untuk bantuan dan koordinasi.</p></div><CircleHelp className="muted-icon"/></div><div className="contact-list">{adminContacts.map(contact => <a key={contact.id} href={contact.type === 'whatsapp' ? `https://wa.me/${contact.value.replace(/\D/g, '').replace(/^0/, '62')}` : `mailto:${contact.value}`} target={contact.type === 'whatsapp' ? '_blank' : undefined} rel={contact.type === 'whatsapp' ? 'noreferrer' : undefined}>{contact.type === 'whatsapp' ? 'WhatsApp:' : 'Email:'} {contact.value}</a>)}</div></section>{currentUser.role === 'Super Admin' && <section className="card settings-card"><div className="card-head"><div><h2>Kelola kontak admin</h2><p>Hanya Super Admin yang dapat menambah, memperbarui, atau menghapus kontak.</p></div><ShieldCheck className="muted-icon"/></div><form className="form-grid" onSubmit={submitContact}><label>Tipe kontak<select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label><label>Nilai kontak<input value={form.value} onChange={e => setForm({ ...form, value: e.target.value })} placeholder={form.type === 'whatsapp' ? 'Contoh: 085771076965' : 'Contoh: admin@domain.go.id'} /></label><div className="action-row"><button className="primary" type="submit">{editingId ? 'Simpan perubahan' : 'Tambah kontak'}</button>{editingId && <button className="secondary" type="button" onClick={resetForm}>Batal</button>}</div></form><div className="contact-list compact">{adminContacts.map(contact => <div className="mini-contact" key={contact.id}><span>{contact.type === 'whatsapp' ? 'WhatsApp' : 'Email'}</span><strong>{contact.value}</strong><div className="mini-contact-actions"><button type="button" className="secondary" onClick={() => editContact(contact)}>Edit</button><button type="button" className="danger" onClick={() => deleteContact(contact.id)}>Hapus</button></div></div>)}</div></section>}{currentUser.role === 'Super Admin' && <section className="card settings-card"><div className="card-head"><div><h2>Manajemen pengguna</h2><p>{users.length} akun terdaftar · {authLog.length} aktivitas autentikasi</p></div><Users className="muted-icon"/></div>{users.map(user => <div className="user-row" key={user.id}><div><b>{user.name}</b><small>{user.username}</small></div><span className="status">{user.role}</span></div>)}</section>}<section className="card settings-card"><div className="card-head"><div><h2>Panduan singkat</h2><p>Alur kerja SIPERAN yang direkomendasikan</p></div><CircleHelp className="muted-icon"/></div><ol className="guide"><li><b>Rencanakan</b><span>Tambahkan program, indikator, dan pagu.</span></li><li><b>Kendalikan</b><span>Perbarui realisasi dan lampirkan bukti.</span></li><li><b>Evaluasi</b><span>Verifikasi dokumen dan unduh laporan.</span></li></ol></section></div></> }
 function Modal({ title, onClose, children }) { return <div className="modal-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}><div className="modal"><div className="modal-head"><h2>{title}</h2><button className="icon-btn" onClick={onClose}><X size={19}/></button></div>{children}</div></div> }
 
-createRoot(document.getElementById('root')).render(<App />)
+const rootElement = document.getElementById('root')
+if (!rootElement) throw new Error('Elemen #root tidak ditemukan.')
+
+const globalRoot = window.__SIPERAN_ROOT__ || (window.__SIPERAN_ROOT__ = createRoot(rootElement))
+globalRoot.render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+)
