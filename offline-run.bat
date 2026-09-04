@@ -6,4 +6,5 @@ if not exist node_modules (
   pause
   exit /b 1
 )
+start "" http://localhost:5173
 call npm run dev

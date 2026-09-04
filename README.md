@@ -32,6 +32,21 @@ C:\Users\Yudhaeka12\SIPERAN-KEDUNGWARINGIN\backup-project.bat
 
 File zip backup akan dibuat di folder `backup` di dalam project.
 
+## Branch GitHub
+
+Project ini sudah memiliki branch utama dan backup:
+
+- `master` → branch utama untuk versi aktif
+- `backup` → salinan aman / backup
+- `dev` → cabang pengembangan lanjutan
+
+Untuk berpindah ke branch pengembangan:
+
+```powershell
+cd C:\Users\Yudhaeka12\SIPERAN-KEDUNGWARINGIN
+git checkout dev
+```
+
 ## Membuka source code di VS Code
 
 Buka file `SIPERAN-KEDUNGWARINGIN.code-workspace` dengan VS Code, atau jalankan:
