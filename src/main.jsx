@@ -325,6 +325,27 @@ function RkaForm() {
     }).finally(() => setSaving(false))
   }
 
+  const exportRkaPdf = () => {
+    const lines = [
+      'SIPERAN KEDUNGWARINGIN',
+      'Rencana Kerja dan Anggaran',
+      'Tahun: 2025',
+      'Satuan: Kecamatan Kedungwaringin',
+      'Formulir: RKA MANUAL - RINCIAN BELANJA SKPD',
+      '',
+      'Detail RKA:'
+    ]
+
+    rows.forEach((row, idx) => {
+      const label = row.uraian || `Baris ${idx + 1}`
+      const amount = Number(row.jumlah) || 0
+      lines.push(`${row.kode || '-'} | ${label} | Rp ${new Intl.NumberFormat('id-ID').format(amount)}`)
+    })
+
+    lines.push('', `Total Anggaran: Rp ${new Intl.NumberFormat('id-ID').format(total)}`)
+    makePdfDownload('RKA-Kedungwaringin', lines)
+  }
+
   return <section className="card rka-card">
     <div className="card-head">
       <div>
@@ -382,7 +403,7 @@ function RkaForm() {
 
     <div className="rka-actions">
       <button className="primary" type="button" onClick={saveRka} disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan RKA'}</button>
-      <button className="secondary" type="button">Export PDF</button>
+      <button className="secondary" type="button" onClick={exportRkaPdf}>Export PDF</button>
     </div>
     {status && <p className="muted" style={{ marginTop: 12 }}>{status}</p>}
   </section>
