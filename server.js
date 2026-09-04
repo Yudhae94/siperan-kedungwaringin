@@ -9,7 +9,7 @@ const db = new DatabaseSync(path.join(__dirname, 'siperan.sqlite'))
 db.exec('PRAGMA journal_mode = WAL')
 db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS programs (id INTEGER PRIMARY KEY, kode TEXT UNIQUE NOT NULL, nama TEXT NOT NULL, bidang TEXT, target REAL NOT NULL, realisasi REAL NOT NULL DEFAULT 0, pagu REAL NOT NULL DEFAULT 0, status TEXT NOT NULL, penanggung TEXT, deadline TEXT);
-CREATE TABLE IF NOT EXISTS docs (id INTEGER PRIMARY KEY, name TEXT NOT NULL, type TEXT, size TEXT, date TEXT, status TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS docs (id INTEGER PRIMARY KEY, name TEXT NOT NULL, type TEXT, size TEXT, date TEXT, status TEXT NOT NULL, preview TEXT);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, title TEXT NOT NULL, type TEXT);
 CREATE TABLE IF NOT EXISTS auth_log (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, role TEXT, action TEXT NOT NULL, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS admin_contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, value TEXT NOT NULL);`)
@@ -26,7 +26,7 @@ const seed = () => {
     db.prepare("UPDATE users SET name = 'Admin' WHERE username = 'admin' AND name <> 'Admin'").run()
   }
   if (!db.prepare('SELECT 1 FROM programs LIMIT 1').get()) { const p=db.prepare('INSERT INTO programs VALUES (?,?,?,?,?,?,?,?,?,?)'); programs.forEach(x=>p.run(...x)) }
-  if (!db.prepare('SELECT 1 FROM docs LIMIT 1').get()) { const d=db.prepare('INSERT INTO docs VALUES (?,?,?,?,?,?)'); [[1,'Rencana Kerja Kecamatan 2026.pdf','Perencanaan','2.4 MB','02 Sep 2026','Terverifikasi'],[2,'Laporan Realisasi Triwulan II.xlsx','Pelaporan','1.1 MB','28 Agu 2026','Menunggu verifikasi'],[3,'BA Evaluasi Kinerja Semester I.pdf','Evaluasi','845 KB','21 Agu 2026','Terverifikasi']].forEach(x=>d.run(...x)) }
+  if (!db.prepare('SELECT 1 FROM docs LIMIT 1').get()) { const d=db.prepare('INSERT INTO docs (id,name,type,size,date,status,preview) VALUES (?,?,?,?,?,?,?)'); [[1,'Rencana Kerja Kecamatan 2026.pdf','Perencanaan','2.4 MB','02 Sep 2026','Terverifikasi','Dokumen perencanaan utama berisi target program, pagu, dan jadwal kegiatan Kecamatan Kedungwaringin.'],[2,'Laporan Realisasi Triwulan II.xlsx','Pelaporan','1.1 MB','28 Agu 2026','Menunggu verifikasi','Laporan realisasi triwulan berisi ringkasan capaian keuangan, fisik, dan indikator kinerja.'],[3,'BA Evaluasi Kinerja Semester I.pdf','Evaluasi','845 KB','21 Agu 2026','Terverifikasi','Berita acara evaluasi membahas kesesuaian target, hambatan, dan rekomendasi tindak lanjut.']].forEach(x=>d.run(...x)) }
   if (!db.prepare('SELECT 1 FROM events LIMIT 1').get()) { const e=db.prepare('INSERT INTO events (date,title,type) VALUES (?,?,?)'); [['2026-09-08','Rapat pengendalian bulanan','Rapat'],['2026-09-12','Batas unggah laporan PPTK','Deadline'],['2026-09-18','Monitoring Stunting Terpadu','Monitoring'],['2026-09-25','Forum evaluasi kinerja','Evaluasi']].forEach(x=>e.run(...x)) }
   if (!db.prepare('SELECT 1 FROM admin_contacts LIMIT 1').get()) { const c=db.prepare('INSERT INTO admin_contacts (type,value) VALUES (?,?)'); c.run('whatsapp','085771076965'); c.run('email','admin.siperan@kedungwaringin.go.id') }
 }
@@ -49,8 +49,8 @@ app.post('/api/programs',auth,write,(req,res)=>{const b=req.body; const info=db.
 app.patch('/api/programs/:id',auth,write,(req,res)=>{const b=req.body; const old=db.prepare('SELECT * FROM programs WHERE id=?').get(req.params.id); if(!old)return res.sendStatus(404); const n={...old,...b}; db.prepare('UPDATE programs SET nama=?,bidang=?,target=?,realisasi=?,pagu=?,status=?,penanggung=?,deadline=? WHERE id=?').run(n.nama,n.bidang,n.target,n.realisasi,n.pagu,n.status,n.penanggung,n.deadline,n.id); res.json(n)})
 app.delete('/api/programs/:id',auth,write,(req,res)=>{db.prepare('DELETE FROM programs WHERE id=?').run(req.params.id);res.json({ok:true})})
 app.get('/api/docs',auth,(req,res)=>res.json(db.prepare('SELECT * FROM docs ORDER BY id DESC').all()))
-app.post('/api/docs',auth,write,(req,res)=>{const b=req.body; const info=db.prepare('INSERT INTO docs(name,type,size,date,status) VALUES (?,?,?,?,?)').run(b.name,b.type,b.size,b.date || new Date().toLocaleDateString('id-ID'), 'Menunggu verifikasi');res.json(db.prepare('SELECT * FROM docs WHERE id=?').get(info.lastInsertRowid))})
-app.patch('/api/docs/:id',auth,write,(req,res)=>{db.prepare('UPDATE docs SET status=? WHERE id=?').run(req.body.status,req.params.id);res.json({ok:true})})
+app.post('/api/docs',auth,write,(req,res)=>{const b=req.body; const info=db.prepare('INSERT INTO docs(name,type,size,date,status,preview) VALUES (?,?,?,?,?,?)').run(b.name,b.type,b.size,b.date || new Date().toLocaleDateString('id-ID'), 'Menunggu verifikasi', b.preview || 'Dokumen baru sedang menunggu review dan verifikasi oleh admin SIPERAN.');res.json(db.prepare('SELECT * FROM docs WHERE id=?').get(info.lastInsertRowid))})
+app.patch('/api/docs/:id',auth,write,(req,res)=>{const b=req.body; db.prepare('UPDATE docs SET status=?, preview=? WHERE id=?').run(b.status || 'Terverifikasi', b.preview || 'Dokumen sudah ditinjau dan siap ditindaklanjuti.', req.params.id);res.json({ok:true})})
 app.get('/api/events',auth,(req,res)=>res.json(db.prepare('SELECT * FROM events').all()))
 app.use(express.static(path.join(__dirname,'dist')))
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'dist','index.html')))

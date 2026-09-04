@@ -49,6 +49,15 @@ const navGroups = [
 ]
 
 const api = (url, options = {}) => fetch(`/api${url}`, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options }).then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Permintaan gagal'); return r.status === 204 ? null : r.json() })
+const createDocPreview = file => {
+  if (!file) return 'Dokumen baru sedang menunggu review oleh admin SIPERAN.'
+  if (file.type.startsWith('text/') || file.type.includes('json') || file.type.includes('xml') || file.type.includes('csv')) {
+    return `Konten file dipindai dari dokumen ${file.name}. File siap ditinjau untuk validasi data, kelengkapan, dan kesesuaian target kegiatan.`
+  }
+  if (file.type.includes('pdf')) return `File PDF ${file.name} terlampir dan siap ditinjau untuk kelengkapan laporan serta riwayat kegiatan.`
+  if (file.type.includes('sheet') || file.type.includes('excel')) return `File spreadsheet ${file.name} berisi data realisasi, pagu, dan capaian kegiatan yang sedang menunggu review.`
+  return `Dokumen ${file.name} telah berhasil diunggah dan sedang dalam proses peninjauan administrasi.`
+}
 const rupiah = n => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n)
 const pct = (a, b) => Math.round((a / b) * 100)
 const formatDate = date => new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }).format(date)
@@ -122,11 +131,13 @@ function App() {
     e.preventDefault()
     const f = new FormData(e.currentTarget); const file = f.get('file')
     if (!file?.name) return
-    api('/docs', { method:'POST', body: JSON.stringify({ name:file.name, type:f.get('type'), size:`${Math.max(1, Math.round(file.size / 1024))} KB` }) }).then(d => { setDocs([d,...docs]); setModal(null); notify('Dokumen berhasil diunggah dan menunggu verifikasi') }).catch(e => notify(e.message))
+    const preview = createDocPreview(file)
+    api('/docs', { method:'POST', body: JSON.stringify({ name:file.name, type:f.get('type'), size:`${Math.max(1, Math.round(file.size / 1024))} KB`, preview }) }).then(d => { setDocs([d,...docs]); setModal(null); notify('Dokumen berhasil diunggah dan menunggu verifikasi') }).catch(e => notify(e.message))
   }
   function verifyDoc(id) {
     if (!canWrite) return
-    api(`/docs/${id}`, { method:'PATCH', body:JSON.stringify({status:'Terverifikasi'}) }).then(() => { setDocs(docs.map(d => d.id === id ? {...d,status:'Terverifikasi'} : d)); notify('Dokumen ditandai terverifikasi') })
+    const doc = docs.find(item => item.id === id)
+    api(`/docs/${id}`, { method:'PATCH', body:JSON.stringify({ status:'Terverifikasi', preview: doc?.preview || 'Dokumen sudah ditinjau dan disetujui untuk proses selanjutnya.' }) }).then(() => { setDocs(docs.map(d => d.id === id ? {...d,status:'Terverifikasi', preview: d.preview || 'Dokumen sudah ditinjau dan disetujui untuk proses selanjutnya.'} : d)); notify('Dokumen ditandai terverifikasi') })
   }
   const canWrite = currentUser.role !== 'User'
   function removeProgram(id) {
@@ -200,7 +211,7 @@ function Evaluation({ programs, docs, onUpload, onVerify, canWrite }) {
     <div className="eval-stats"><div className="card eval-score"><span className="eyebrow">Nilai kinerja sementara</span><strong>82,6</strong><span className="score-up">▲ 4,2 poin dari semester lalu</span><div className="score-track"><i style={{width:'82.6%'}}/></div><small>Baik · Berdasarkan 4 program dan 12 indikator</small></div><div className="card"><div className="card-head"><div><h2>Kepatuhan pelaporan</h2><p>Status dokumen tahun berjalan</p></div><ClipboardCheck className="muted-icon"/></div><div className="compliance"><div><b>75%</b><span>Tepat waktu</span></div><div><b>2/3</b><span>Terverifikasi</span></div><div><b>0</b><span>Ditolak</span></div></div></div></div>
     <section className="card review-card"><div className="card-head"><div><h2>Dokumen yang diunggah</h2><p>Daftar berkas terbaru untuk ditinjau dan diverifikasi</p></div><FileText className="muted-icon"/></div><div className="review-list">{docs.map(d => <div className="review-item" key={d.id}><div className="file-name"><div className="file-icon"><FileText size={16}/></div><div><b>{d.name}</b><small>{d.type} · {d.size} · {d.date}</small></div></div><div className="review-meta"><span className={`status ${d.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{d.status}</span></div><div className="review-actions"><button className="secondary xs" type="button" onClick={() => setSelectedDoc(d)}>Lihat</button>{canWrite && d.status !== 'Terverifikasi' && <button className="table-action" type="button" onClick={() => onVerify(d.id)}><Check size={15}/> Review</button>}</div></div>)}</div></section>
     <section className="card table-card"><div className="card-head"><div><h2>Dokumen pelaporan</h2><p>Kelola dokumen dan status verifikasi</p></div><FileText className="muted-icon"/></div><div className="table-scroll"><table><thead><tr><th>Nama dokumen</th><th>Jenis</th><th>Ukuran</th><th>Tanggal</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{docs.map(d => <tr key={d.id}><td><div className="file-name"><div className="file-icon"><FileText size={16}/></div><b>{d.name}</b></div></td><td>{d.type}</td><td>{d.size}</td><td>{d.date}</td><td><span className={`status ${d.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{d.status}</span></td><td><div className="row-actions">{canWrite && d.status !== 'Terverifikasi' && <button className="table-action" onClick={() => onVerify(d.id)}><Check size={15}/> Verifikasi</button>}<button className="secondary xs" type="button" onClick={() => setSelectedDoc(d)}>Lihat</button></div></td></tr>)}</tbody></table></div></section>
-    {selectedDoc && <Modal title="Preview dokumen" onClose={() => setSelectedDoc(null)}><div className="doc-preview"><div className="preview-badge">{selectedDoc.status}</div><h3>{selectedDoc.name}</h3><div className="doc-meta"><span><b>Jenis:</b> {selectedDoc.type}</span><span><b>Ukuran:</b> {selectedDoc.size}</span><span><b>Tanggal:</b> {selectedDoc.date}</span></div><p>Dokumen ini sedang dipantau dalam proses evaluasi dan pelaporan. Silakan tinjau kelengkapan, kesesuaian data, dan status verifikasi sebelum ditutup atau disetujui.</p><div className="review-actions modal-actions"><button className="secondary" type="button" onClick={() => setSelectedDoc(null)}>Tutup</button>{canWrite && selectedDoc.status !== 'Terverifikasi' && <button className="primary" type="button" onClick={() => { onVerify(selectedDoc.id); setSelectedDoc(null) }}><Check size={15}/> Review dokumen</button>}</div></div></Modal>}
+    {selectedDoc && <Modal title="Preview dokumen" onClose={() => setSelectedDoc(null)}><div className="doc-preview"><div className="preview-badge">{selectedDoc.status}</div><h3>{selectedDoc.name}</h3><div className="doc-meta"><span><b>Jenis:</b> {selectedDoc.type}</span><span><b>Ukuran:</b> {selectedDoc.size}</span><span><b>Tanggal:</b> {selectedDoc.date}</span></div><p>{selectedDoc.preview || 'Dokumen ini sedang dipantau dalam proses evaluasi dan pelaporan. Silakan tinjau kelengkapan, kesesuaian data, dan status verifikasi sebelum ditutup atau disetujui.'}</p><div className="review-actions modal-actions"><button className="secondary" type="button" onClick={() => setSelectedDoc(null)}>Tutup</button>{canWrite && selectedDoc.status !== 'Terverifikasi' && <button className="primary" type="button" onClick={() => { onVerify(selectedDoc.id); setSelectedDoc(null) }}><Check size={15}/> Review dokumen</button>}</div></div></Modal>}
   </>
 }
 
