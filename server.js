@@ -37,6 +37,11 @@ for (const column of ['preview', 'file_path', 'mime_type', 'storage_name']) {
     // ignore if column already exists
   }
 }
+try {
+  db.exec('ALTER TABLE docs ADD COLUMN periode TEXT')
+} catch {
+  // ignore if column already exists
+}
 
 // E-Usulan Kegiatan is the database-facing name for the former program list.
 db.exec(`CREATE TABLE IF NOT EXISTS e_usulan_kegiatan (
@@ -343,7 +348,8 @@ app.post('/api/docs', auth, write, upload.single('file'), (req, res) => {
   const storageName = file.filename
   const filePath = `/api/uploads/${storageName}`
 
-  const info = db.prepare('INSERT INTO docs(name,type,size,date,status,preview,file_path,mime_type,storage_name) VALUES (?,?,?,?,?,?,?,?,?)').run(
+  const periode = req.body.periode || null
+  const info = db.prepare('INSERT INTO docs(name,type,size,date,status,preview,file_path,mime_type,storage_name,periode) VALUES (?,?,?,?,?,?,?,?,?,?)').run(
     name,
     type,
     size,
@@ -352,7 +358,8 @@ app.post('/api/docs', auth, write, upload.single('file'), (req, res) => {
     preview,
     filePath,
     file.mimetype,
-    storageName
+    storageName,
+    periode
   )
 
   const created = db.prepare('SELECT * FROM docs WHERE id=?').get(info.lastInsertRowid)
