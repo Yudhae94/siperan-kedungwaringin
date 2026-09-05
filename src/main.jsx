@@ -5,7 +5,8 @@ import {
   Activity, AlertTriangle, BarChart3, Bell, CalendarDays, Check, ChevronDown,
   CircleHelp, ClipboardCheck, CloudDownload, FileDown, FileText, FolderOpen,
   Gauge, LayoutDashboard, Menu, Moon, MoreHorizontal, Plus, Search, Settings2,
-  ShieldCheck, Sun, Target, Upload, Users, X, Zap, LogIn, LogOut, LockKeyhole
+  ShieldCheck, Sun, Target, Upload, Users, X, Zap, LogIn, LogOut, LockKeyhole,
+  ClipboardList, FileUp, BadgeCheck, Archive
 } from 'lucide-react'
 import './styles.css'
 
@@ -57,16 +58,21 @@ const navGroups = [
   { title: 'Utama', items: [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }] },
   { title: 'Siklus Kinerja', items: [
     { id: 'perencanaan', label: 'Perencanaan', icon: Target },
+    { id: 'usulan-rka', label: 'Usulan RKA / KAK', icon: ClipboardList, parent: 'Perencanaan' },
+    { id: 'upload-pendukung', label: 'Upload Dokumen Pendukung', icon: FileUp, parent: 'Perencanaan' },
+    { id: 'verifikasi-usulan', label: 'Verifikasi Usulan', icon: BadgeCheck, parent: 'Perencanaan' },
+    { id: 'arsip', label: 'Arsip Renja & DPA', icon: FolderOpen, parent: 'Perencanaan' },
     { id: 'pengendalian', label: 'Pengendalian & Realisasi', icon: Activity },
     { id: 'evaluasi', label: 'Evaluasi & Pelaporan', icon: BarChart3 },
   ]},
   { title: 'Layanan', items: [
     { id: 'kalender', label: 'Kalender Kegiatan', icon: CalendarDays },
     { id: 'unduhan', label: 'Pusat Unduhan', icon: CloudDownload },
-    { id: 'arsip', label: 'Arsip Renja & DPA', icon: FolderOpen },
     { id: 'pengaturan', label: 'Pengaturan & Bantuan', icon: Settings2 },
   ]},
 ]
+
+const planningSubPages = ['usulan-rka', 'upload-pendukung', 'verifikasi-usulan', 'arsip']
 
 const api = (url, options = {}) => fetch(`/api${url}`, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options }).then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Permintaan gagal'); return r.status === 204 ? null : r.json() })
 const createDocPreview = file => {
@@ -132,6 +138,7 @@ function App() {
   const [unitFilter, setUnitFilter] = useState('Semua Unit')
   const unitFilterOptions = ['Semua Unit', ...bidangOptions]
   const [modal, setModal] = useState(null)
+  const [usulanRka, setUsulanRka] = useState([])
   const [progressProgram, setProgressProgram] = useState(null)
   const [progressValue, setProgressValue] = useState(0)
   const [toast, setToast] = useState('')
@@ -150,7 +157,7 @@ function App() {
   }, [])
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([api('/programs'), api('/docs'), api('/monthly-reports'), api('/events'), api('/log'), api('/users'), api('/admin-contacts'), api('/section-approvals')]).then(([p,d,r,e,l,u,c,a]) => { setPrograms(p); setDocs(d); setReports(r); setEvents(e); setAuthLog(l); setUsers(u); setAdminContacts(c.length ? c : defaultAdminContacts); setApprovalBoard(a.length ? a : defaultApprovalBoard) }).catch(() => notify('Gagal memuat data server'))
+    Promise.all([api('/programs'), api('/docs'), api('/monthly-reports'), api('/events'), api('/log'), api('/users'), api('/admin-contacts'), api('/section-approvals'), api('/usulan-rka')]).then(([p,d,r,e,l,u,c,a,ur]) => { setPrograms(p); setDocs(d); setReports(r); setEvents(e); setAuthLog(l); setUsers(u); setAdminContacts(c.length ? c : defaultAdminContacts); setApprovalBoard(a.length ? a : defaultApprovalBoard); setUsulanRka(ur) }).catch(() => notify('Gagal memuat data server'))
   }, [currentUser])
   useEffect(() => {
     if (!currentUser) return
@@ -254,6 +261,18 @@ function App() {
       })
       .catch(error => notify(error.message || 'Gagal menambahkan kegiatan'))
   }
+  function updateEvent(e) {
+    if (!canWrite || !modal?.event) return
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    api(`/events/${modal.event.id}`, { method: 'PATCH', body: JSON.stringify({ date: form.get('date'), title: form.get('title'), type: form.get('type') }) })
+      .then(updated => {
+        setEvents(list => list.map(item => item.id === updated.id ? updated : item).sort((a, b) => a.date.localeCompare(b.date)))
+        setModal(null)
+        notify('Kegiatan agenda berhasil diperbarui')
+      })
+      .catch(error => notify(error.message || 'Gagal memperbarui kegiatan'))
+  }
   function deleteEvent(id) {
     if (currentUser.role !== 'Super Admin') return
     api(`/events/${id}`, { method: 'DELETE' })
@@ -272,6 +291,55 @@ function App() {
     }).catch(e => notify(e.message))
   }
   const canWrite = currentUser.role !== 'User'
+  const isPerencanaan = ['Admin', 'Super Admin'].includes(currentUser.role)
+  function submitUsulan(e) {
+    if (!canWrite) return
+    e.preventDefault()
+    const f = new FormData(e.currentTarget)
+    api('/usulan-rka', { method: 'POST', body: JSON.stringify({
+      judul: f.get('judul'), bidang: f.get('bidang'), jenis: f.get('jenis'),
+      tahun_anggaran: f.get('tahun_anggaran'), pagu: Number(f.get('pagu')) || 0,
+      penanggung: f.get('penanggung'), target: f.get('target'),
+      batas_waktu: f.get('batas_waktu'), catatan: f.get('catatan')
+    }) }).then(item => {
+      setUsulanRka(list => [item, ...list]); setModal(null); notify('Usulan RKA/KAK berhasil dikirim dan menunggu verifikasi')
+    }).catch(err => notify(err.message || 'Gagal menyimpan usulan'))
+  }
+  function uploadDokumenPendukung(e, usulanId) {
+    if (!canWrite) return
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    const file = form.get('file')
+    if (!file || !file.name) return
+    const payload = new FormData()
+    payload.append('file', file)
+    payload.append('jenis_dokumen', form.get('jenis_dokumen'))
+    payload.append('size', formatFileSize(file.size))
+    fetch(`/api/usulan-rka/${usulanId}/dokumen`, { method: 'POST', credentials: 'include', body: payload })
+      .then(async r => { const data = await r.json().catch(() => null); if (!r.ok) throw new Error(data?.error || 'Gagal mengunggah dokumen'); return data })
+      .then(doc => {
+        setUsulanRka(list => list.map(item => item.id === Number(usulanId) ? { ...item, dokumen: [...(item.dokumen || []), doc] } : item))
+        setModal(null)
+        notify('Dokumen pendukung berhasil diunggah')
+      })
+      .catch(err => notify(err.message || 'Gagal mengunggah dokumen'))
+  }
+  function verifyUsulan(id, keputusan, catatan) {
+    if (!isPerencanaan) return
+    api(`/usulan-rka/${id}/verifikasi`, { method: 'PATCH', body: JSON.stringify({ keputusan, catatan }) })
+      .then(updated => {
+        setUsulanRka(list => list.map(item => item.id === updated.id ? updated : item))
+        notify(`Usulan ditandai ${keputusan.toLowerCase()}`)
+      })
+      .catch(err => notify(err.message || 'Gagal memperbarui status usulan'))
+  }
+  function deleteUsulan(id) {
+    if (currentUser.role !== 'Super Admin') return
+    if (!window.confirm('Hapus usulan ini beserta seluruh dokumen pendukungnya?')) return
+    api(`/usulan-rka/${id}`, { method: 'DELETE' })
+      .then(() => { setUsulanRka(list => list.filter(item => item.id !== id)); notify('Usulan berhasil dihapus') })
+      .catch(err => notify(err.message || 'Gagal menghapus usulan'))
+  }
   function removeProgram(id) {
     if (!canWrite) return
     api(`/programs/${id}`, {method:'DELETE'}).then(() => { setPrograms(programs.filter(program => program.id !== id)); notify('Program berhasil dihapus') })
@@ -304,9 +372,12 @@ function App() {
     <main className="main">
       <header className="topbar"><button className="hamburger" onClick={() => setSidebar(true)}><Menu size={21}/></button><div className="breadcrumbs"><span>SIPERAN</span><b>/</b><strong>{navGroups.flatMap(g => g.items).find(i => i.id === active)?.label}</strong></div><div className="top-actions"><div className="role-select"><ShieldCheck size={16}/><span>{currentUser.role}</span></div><button className="theme-switch" onClick={() => setTheme(curr => curr === 'light' ? 'dark' : 'light')} aria-label="Ganti tema"><span className="theme-icon">{theme === 'light' ? <Moon size={16}/> : <Sun size={16}/>}</span><span>{theme === 'light' ? 'Mode gelap' : 'Mode terang'}</span></button><div className="notification-wrap"><button className="icon-btn notification" onClick={() => setNotificationsOpen(v => !v)} aria-label="Lihat notifikasi"><Bell size={19}/>{notificationCount > 0 && <span className="notification-badge">{notificationCount}</span>}</button>{notificationsOpen && <div className="notification-panel"><div className="notification-head"><b>Notifikasi</b><span>{notificationCount} perlu tindak lanjut</span></div>{notifications.map(item => <div className="notification-item" key={item.id}><div className="notification-copy"><b>{item.title}</b><small>{item.detail}</small></div><button className="secondary xs" onClick={() => { setActive(item.href); setNotificationsOpen(false) }}>{item.action}</button></div>)}</div>}</div><div className="top-avatar">{currentUser.name.slice(0, 2).toUpperCase()}</div></div></header>
       <div className="content">
-        {active === 'dashboard' && <Dashboard programs={programs} docs={docs} events={events} overall={overall} totalPagu={totalPagu} totalRealisasi={totalRealisasi} onNavigate={setActive} />}
-        {active === 'kalender' && <CalendarPage events={events} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} onAdd={() => setModal('event')} onDelete={deleteEvent} />}
+        {active === 'dashboard' && <Dashboard programs={filtered} docs={docs} events={events} overall={overall} totalPagu={totalPagu} totalRealisasi={totalRealisasi} onNavigate={setActive} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} />}
+        {active === 'kalender' && <CalendarPage events={events} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} onAdd={() => setModal('event')} onEdit={event => setModal({ type: 'edit-event', event })} onDelete={deleteEvent} />}
         {active === 'perencanaan' && <Planning programs={filtered} query={query} setQuery={setQuery} onAdd={() => setModal('program')} onDelete={removeProgram} onProgress={openProgressEditor} canWrite={canWrite} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
+        {active === 'usulan-rka' && <UsulanRkaPage usulanRka={usulanRka} canWrite={canWrite} onAdd={() => setModal('usulan-rka')} onUpload={id => setModal({ type: 'upload-pendukung', usulanId: id })} onVerify={verifyUsulan} onDelete={deleteUsulan} isPerencanaan={isPerencanaan} isSuperAdmin={currentUser.role === 'Super Admin'} />}
+        {active === 'upload-pendukung' && <UploadPendukungPage usulanRka={usulanRka} canWrite={canWrite} onUpload={id => setModal({ type: 'upload-pendukung', usulanId: id })} onDelete={deleteUsulan} isSuperAdmin={currentUser.role === 'Super Admin'} />}
+        {active === 'verifikasi-usulan' && <VerifikasiUsulanPage usulanRka={usulanRka} isPerencanaan={isPerencanaan} onVerify={verifyUsulan} onDelete={deleteUsulan} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'pengendalian' && <Control programs={programs} setPrograms={setPrograms} onUpload={() => setModal('doc')} canWrite={canWrite} notify={notify} />}
         {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('report')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
@@ -314,11 +385,13 @@ function App() {
         {active === 'pengaturan' && <Settings notify={notify} currentUser={currentUser} users={users} authLog={authLog} adminContacts={adminContacts} setAdminContacts={setAdminContacts} />}
       </div>
     </main>
-    {modal === 'program' && canWrite && <Modal title="E-Usulan Kegiatan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addProgram}><label>Nama kegiatan<input required name="nama" placeholder="Contoh: Rehabilitasi drainase"/></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Target indikator<input required name="target" type="number" min="1" /></label><label>Pagu anggaran<input required name="pagu" type="number" min="0" /></label><label>Penanggung jawab<input required name="penanggung" placeholder="Nama jabatan/tim"/></label><label>Batas waktu<input required name="deadline" type="date"/></label><button className="primary full" type="submit"><Plus size={17}/> Simpan E-Usulan</button></form></Modal>}
+    {modal === 'usulan-rka' && canWrite && <Modal title="Usulan RKA / KAK" onClose={() => setModal(null)}><form className="form-grid" onSubmit={submitUsulan}><label className="full">Judul usulan kegiatan<input required name="judul" placeholder="Contoh: Rehabilitasi drainase pasar desa" /></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Jenis usulan<select name="jenis"><option>Tahunan</option><option>Perubahan</option></select></label><label>Tahun anggaran<input required name="tahun_anggaran" type="number" min="2020" max="2100" defaultValue={new Date().getFullYear() + 1} /></label><label>Pagu anggaran (Rp)<input required name="pagu" type="number" min="0" /></label><label>Penanggung jawab (Kasi / PPTK)<input required name="penanggung" placeholder="Contoh: PPTK Infrastruktur" /></label><label>Target indikator / output<input required name="target" placeholder="Contoh: 2.400 m jalan ditingkatkan" /></label><label>Batas waktu<input required name="batas_waktu" type="date" /></label><label className="full">Catatan tambahan<textarea name="catatan" rows={3} placeholder="Opsional: keterangan pendukung usulan" /></label><button className="primary full" type="submit"><Plus size={17}/> Kirim usulan RKA / KAK</button></form></Modal>}
+    {modal?.type === 'upload-pendukung' && canWrite && <Modal title="Upload Dokumen Pendukung" onClose={() => setModal(null)}><form className="form-grid" onSubmit={e => uploadDokumenPendukung(e, modal.usulanId)}><label className="full">Jenis dokumen<select name="jenis_dokumen"><option>KAK</option><option>RAB</option><option>Jadwal Pelaksanaan</option></select></label><label className="upload-field full">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB per dokumen.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
     {progressProgram && canWrite && <Modal title={`Atur progress ${progressProgram.kode}`} onClose={() => setProgressProgram(null)}><div className="progress-editor"><p><b>{progressProgram.nama}</b></p><label>Progress saat ini: <strong>{progressValue}%</strong><input type="range" min="0" max="100" step="10" value={progressValue} onChange={e => setProgressValue(Number(e.target.value))}/></label><div className="step-grid">{[0,10,20,30,40,50,60,70,80,90,100].map(step => <button type="button" key={step} className={`step-btn ${progressValue === step ? 'active' : ''}`} onClick={() => setProgressValue(step)}>{step}%</button>)}</div><div className="modal-actions"><button className="secondary" type="button" onClick={() => setProgressProgram(null)}>Batal</button><button className="primary" type="button" onClick={saveProgress}>Simpan progress</button></div></div></Modal>}
     {modal === 'doc' && canWrite && <Modal title="Unggah dokumen" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addDoc}><label>Jenis dokumen<select name="type"><option>Renstra</option><option>Renja</option><option>DPA</option><option>RAK</option><option>Perencanaan</option><option>Pelaporan</option><option>Evaluasi</option><option>Lainnya</option></select></label><label className="upload-field">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
     {modal === 'report' && canWrite && <Modal title="Unggah laporan triwulan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addDoc}><label>Periode laporan<select required name="periode"><option value="">Pilih periode</option><option>Triwulan I</option><option>Triwulan II</option><option>Triwulan III</option></select></label><label className="upload-field">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><input type="hidden" name="type" value="Pelaporan" /><p className="muted">Unggah laporan untuk periode Triwulan I, II, atau III. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah laporan</button></form></Modal>}
     {modal === 'event' && canWrite && <Modal title="Tambah kegiatan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addEvent}><label className="full">Nama kegiatan<input required name="title" placeholder="Contoh: Rapat koordinasi bulanan" /></label><label>Tanggal<input required name="date" type="date" /></label><label>Jenis kegiatan<select name="type"><option>Rapat</option><option>Deadline</option><option>Monitoring</option><option>Evaluasi</option><option>Lainnya</option></select></label><button className="primary full" type="submit"><Plus size={17}/> Simpan kegiatan</button></form></Modal>}
+    {modal?.type === 'edit-event' && canWrite && <Modal title="Edit kegiatan agenda" onClose={() => setModal(null)}><form className="form-grid" onSubmit={updateEvent}><label className="full">Nama kegiatan<input required name="title" defaultValue={modal.event.title} /></label><label>Tanggal<input required name="date" type="date" defaultValue={modal.event.date} /></label><label>Jenis kegiatan<select name="type" defaultValue={modal.event.type}><option>Rapat</option><option>Deadline</option><option>Monitoring</option><option>Evaluasi</option><option>Lainnya</option></select></label><div className="modal-actions"><button className="secondary" type="button" onClick={() => setModal(null)}>Batal</button><button className="primary" type="submit"><Check size={16}/> Simpan perubahan</button></div></form></Modal>}
     {toast && <div className="toast"><Check size={17}/>{toast}</div>}
   </div>
 }
@@ -343,7 +416,7 @@ function PageTitle({ eyebrow, title, children }) { return <div className="page-t
 function Button({ children, onClick, secondary = false }) { return <button onClick={onClick} className={secondary ? 'secondary' : 'primary'}>{children}</button> }
 function Stat({ label, value, note, icon: Icon, tone = 'green' }) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon size={20}/></div><div className="stat-copy"><span>{label}</span><strong>{value}</strong><small>{note}</small></div></div> }
 
-function Dashboard({ programs, docs, events, overall, totalPagu, totalRealisasi, onNavigate }) {
+function Dashboard({ programs, docs, events, overall, totalPagu, totalRealisasi, onNavigate, currentUnit, onUnitFilterChange, unitFilterOptions }) {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000)
@@ -358,15 +431,68 @@ function Dashboard({ programs, docs, events, overall, totalPagu, totalRealisasi,
 }
 function ActivityItem({ icon: Icon, title, text, time }) { return <div className="timeline-row"><div className="timeline-icon"><Icon size={16}/></div><div><b>{title}</b><small>{text}</small></div><time>{time}</time></div> }
 
-function CalendarPage({ events, canWrite, isSuperAdmin, onAdd, onDelete }) {
+function CalendarPage({ events, canWrite, isSuperAdmin, onAdd, onEdit, onDelete }) {
+  const [lastSync, setLastSync] = useState(() => new Date())
+  useEffect(() => {
+    setLastSync(new Date())
+  }, [events])
   const sortedEvents = [...events].sort((a, b) => a.date.localeCompare(b.date))
-  return <><PageTitle eyebrow="Layanan kegiatan" title="Kalender Kegiatan"><div className="title-actions-inline"><span className="subtitle">Diperbarui otomatis setiap 5 detik</span>{canWrite && <Button onClick={onAdd}><Plus size={17}/> Tambah kegiatan</Button>}</div></PageTitle><section className="card table-card"><div className="table-toolbar"><div><h2>Agenda Kecamatan Kedungwaringin</h2><p>{events.length} kegiatan terjadwal</p></div><CalendarDays className="muted-icon"/></div><div className="download-list">{sortedEvents.length ? sortedEvents.map(event => { const eventDate = new Date(`${event.date}T00:00:00`); return <div className="download-row" key={event.id}><div className="date-box"><b>{eventDate.getDate()}</b><small>{new Intl.DateTimeFormat('id-ID', { month: 'short' }).format(eventDate).toUpperCase()}</small></div><div><b>{event.title}</b><small>{new Intl.DateTimeFormat('id-ID', { dateStyle: 'full' }).format(eventDate)}</small></div><span className={`tag ${event.type === 'Deadline' ? 'orange' : ''}`}>{event.type}</span>{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(event.id)}>Hapus</button>}</div> }) : <p className="muted">Belum ada kegiatan terjadwal.</p>}</div></section></>
+  return <><PageTitle eyebrow="Layanan kegiatan" title="Kalender Kegiatan"><div className="title-actions-inline"><span className="subtitle">Diperbarui realtime setiap 5 detik · Sinkron terakhir {lastSync.toLocaleTimeString('id-ID')}</span>{canWrite && <Button onClick={onAdd}><Plus size={17}/> Tambah kegiatan</Button>}</div></PageTitle><section className="card table-card"><div className="table-toolbar"><div><h2>Agenda Kecamatan Kedungwaringin</h2><p>{events.length} kegiatan terjadwal</p></div><CalendarDays className="muted-icon"/></div><div className="download-list">{sortedEvents.length ? sortedEvents.map(event => { const eventDate = new Date(`${event.date}T00:00:00`); return <div className="download-row" key={event.id}><div className="date-box"><b>{eventDate.getDate()}</b><small>{new Intl.DateTimeFormat('id-ID', { month: 'short' }).format(eventDate).toUpperCase()}</small></div><div><b>{event.title}</b><small>{new Intl.DateTimeFormat('id-ID', { dateStyle: 'full' }).format(eventDate)}</small></div><span className={`tag ${event.type === 'Deadline' ? 'orange' : ''}`}>{event.type}</span>{canWrite && <button className="secondary xs" type="button" onClick={() => onEdit(event)}>Edit</button>}{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(event.id)}>Hapus</button>}</div> }) : <p className="muted">Belum ada kegiatan terjadwal.</p>}</div></section></>
 }
 
 function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canWrite, currentUnit, onUnitFilterChange, unitFilterOptions, onNavigate }) {
   const [showRkaForm, setShowRkaForm] = useState(false)
 
-  return <><PageTitle eyebrow="Siklus kinerja · Tahun Anggaran 2026" title="Perencanaan"><div className="title-actions-inline">{canWrite && <Button onClick={onAdd}><Plus size={17}/> E-Usulan Kegiatan</Button>}<button className="secondary" type="button" onClick={() => setShowRkaForm(v => !v)}>{showRkaForm ? 'Tutup form RKA' : 'Input RKA'}</button><label className="filter-select-wrap"><span>Unit</span><select value={currentUnit} onChange={e => onUnitFilterChange(e.target.value)}>{unitFilterOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label></div></PageTitle><div className="callout"><div className="callout-icon"><Zap size={19}/></div><div><b>Rencana kerja tahun 2026 sedang berjalan</b><p>Lengkapi indikator dan pagu untuk menjaga konsistensi antara rencana dan realisasi.</p></div><button onClick={() => onNavigate('pengendalian')}>Buka pengendalian →</button></div>{showRkaForm && <RkaForm />}<section className="card table-card"><div className="table-toolbar"><div><h2>Daftar E-Usulan Kegiatan</h2><p>{programs.length} usulan kegiatan terdaftar</p></div><div className="search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari usulan kegiatan..." /></div></div><ProgramTable programs={programs} canWrite={canWrite} onDelete={onDelete} onProgress={onProgress}/></section></> }
+  return <><PageTitle eyebrow="Siklus kinerja · Tahun Anggaran 2026" title="Perencanaan (E-Usulan Kegiatan)"><div className="title-actions-inline">{canWrite && <Button onClick={onAdd}><Plus size={17}/> E-Usulan Kegiatan</Button>}<button className="secondary" type="button" onClick={() => setShowRkaForm(v => !v)}>{showRkaForm ? 'Tutup form RKA' : 'Input RKA'}</button><label className="filter-select-wrap"><span>Unit</span><select value={currentUnit} onChange={e => onUnitFilterChange(e.target.value)}>{unitFilterOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label></div></PageTitle>
+    <div className="planning-subnav">
+      <button type="button" className="primary" onClick={() => onNavigate('usulan-rka')}><ClipboardList size={16}/> Usulan RKA / KAK</button>
+      <button type="button" className="primary" onClick={() => onNavigate('upload-pendukung')}><FileUp size={16}/> Upload Dokumen Pendukung</button>
+      <button type="button" className="primary" onClick={() => onNavigate('verifikasi-usulan')}><BadgeCheck size={16}/> Verifikasi Usulan</button>
+      <button type="button" className="primary" onClick={() => onNavigate('arsip')}><FolderOpen size={16}/> Arsip Renja & DPA</button>
+    </div>
+    <div className="callout"><div className="callout-icon"><Zap size={19}/></div><div><b>Rencana kerja tahun 2026 sedang berjalan</b><p>Lengkapi indikator dan pagu untuk menjaga konsistensi antara rencana dan realisasi.</p></div><button onClick={() => onNavigate('pengendalian')}>Buka pengendalian →</button></div>{showRkaForm && <RkaForm />}<section className="card table-card"><div className="table-toolbar"><div><h2>Daftar E-Usulan Kegiatan</h2><p>{programs.length} usulan kegiatan terdaftar</p></div><div className="search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari usulan kegiatan..." /></div></div><ProgramTable programs={programs} canWrite={canWrite} onDelete={onDelete} onProgress={onProgress}/></section></> }
+
+function UsulanRkaPage({ usulanRka, canWrite, onAdd, onUpload, onVerify, onDelete, isPerencanaan, isSuperAdmin }) {
+  return <><PageTitle eyebrow="Perencanaan · E-Usulan Kegiatan" title="Usulan RKA / KAK"><div className="title-actions-inline">{canWrite && <Button onClick={onAdd}><Plus size={17}/> Usulan baru</Button>}</div></PageTitle>
+    <div className="callout"><div className="callout-icon"><ClipboardList size={19}/></div><div><b>Form penginputan usulan kegiatan tahunan / perubahan</b><p>Setiap Kepala Seksi / PPTK dapat mengajukan usulan RKA atau KAK untuk ditelaah oleh Sub Bagian Perencanaan.</p></div>{canWrite && <button onClick={onAdd}>Buat usulan →</button>}</div>
+    <section className="card table-card"><div className="card-head"><div><h2>Daftar usulan RKA / KAK</h2><p>{usulanRka.length} usulan terdaftar</p></div><ClipboardList className="muted-icon"/></div>
+      {usulanRka.length ? <div className="table-scroll"><table><thead><tr><th>Usulan</th><th>Bidang</th><th>Jenis / TA</th><th>Pagu</th><th>Dokumen</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{usulanRka.map(item => <tr key={item.id}>
+        <td><b>{item.judul}</b><span>{item.penanggung || '-'} · Target: {item.target || '-'}</span>{item.batas_waktu && <small>Batas waktu: {new Date(`${item.batas_waktu}T00:00:00`).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</small>}</td>
+        <td>{item.bidang}</td><td>{item.jenis} · TA {item.tahun_anggaran}</td><td>{rupiah(item.pagu)}</td>
+        <td>{(item.dokumen || []).length ? (item.dokumen || []).map(doc => <div className="doc-mini" key={doc.id}><span className={`tag ${doc.jenis_dokumen === 'KAK' ? '' : doc.jenis_dokumen === 'RAB' ? 'orange' : 'blue'}`}>{doc.jenis_dokumen}</span>{doc.file_path ? <a href={doc.file_path} target="_blank" rel="noreferrer">{doc.name}</a> : <span>{doc.name}</span>}</div>) : <small className="muted">Belum ada dokumen</small>}</td>
+        <td><span className={`status ${item.status === 'Disetujui' ? 'done' : item.status === 'Menunggu verifikasi' ? 'warn' : ''}`}>{item.status}</span>{item.catatan_verifikator && <small className="muted">{item.catatan_verifikator}</small>}</td>
+        <td><div className="row-actions">{canWrite && <button className="secondary xs" type="button" onClick={() => onUpload(item.id)}><FileUp size={14}/> Dokumen</button>}{isPerencanaan && <button className="secondary xs" type="button" onClick={() => onVerify(item.id, 'Disetujui', item.catatan_verifikator || 'Usulan disetujui untuk dilanjutkan ke tahap DPA.')}><Check size={14}/> Setujui</button>}{isPerencanaan && <button className="table-action danger" type="button" onClick={() => onVerify(item.id, 'Perlu perbaikan', 'Mohon lengkapi dokumen KAK, RAB, dan jadwal pelaksanaan.')}>Kembalikan</button>}{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(item.id)}>Hapus</button>}</div></td>
+      </tr>)}</tbody></table></div> : <p className="muted">Belum ada usulan. Buat usulan baru untuk memulai.</p>}</section></>
+}
+
+function UploadPendukungPage({ usulanRka, canWrite, onUpload, onDelete, isSuperAdmin }) {
+  const dokumenList = usulanRka.flatMap(item => (item.dokumen || []).map(doc => ({ ...doc, usulan: item })))
+  const jenisCount = jenis => dokumenList.filter(doc => doc.jenis_dokumen === jenis).length
+  return <><PageTitle eyebrow="Perencanaan · E-Usulan Kegiatan" title="Upload Dokumen Pendukung"><div className="title-actions-inline"><span className="subtitle">KAK · RAB · Jadwal Pelaksanaan</span></div></PageTitle>
+    <div className="stat-grid"><Stat label="Dokumen KAK" value={jenisCount('KAK')} note="Kerangka Acuan Kerja" icon={FileText}/><Stat label="Dokumen RAB" value={jenisCount('RAB')} note="Rincian Anggaran Biaya" icon={FileText} tone="blue"/><Stat label="Jadwal Pelaksanaan" value={jenisCount('Jadwal Pelaksanaan')} note="Timeline kegiatan" icon={CalendarDays} tone="orange"/><Stat label="Usulan terdata" value={usulanRka.length} note="Total usulan RKA/KAK" icon={ClipboardList} tone="purple"/></div>
+    <section className="card table-card"><div className="card-head"><div><h2>Unggah dokumen per usulan</h2><p>Pilih usulan lalu unggah KAK, RAB, dan Jadwal Pelaksanaan</p></div><FileUp className="muted-icon"/></div>
+      {usulanRka.length ? <div className="download-list">{usulanRka.map(item => <div className="download-row" key={item.id}><div className="file-icon"><ClipboardList size={18}/></div><div><b>{item.judul}</b><small>{item.bidang} · TA {item.tahun_anggaran} · {(item.dokumen || []).length} dokumen terlampir</small></div>{canWrite && <button className="secondary xs" type="button" onClick={() => onUpload(item.id)}><Upload size={14}/> Unggah</button>}{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(item.id)}>Hapus</button>}</div>)}</div> : <p className="muted">Belum ada usulan. Buat usulan terlebih dahulu pada menu Usulan RKA / KAK.</p>}</section>
+    <section className="card table-card"><div className="card-head"><div><h2>Dokumen pendukung terunggah</h2><p>{dokumenList.length} dokumen terdaftar</p></div><FileText className="muted-icon"/></div>
+      {dokumenList.length ? <div className="download-list">{dokumenList.map(doc => <div className="download-row" key={doc.id}><div className="file-icon"><FileText size={18}/></div><div><b>{doc.name}</b><small>{doc.usulan.judul} · {doc.size}</small></div><span className="tag">{doc.jenis_dokumen}</span>{doc.file_path ? <a className="icon-btn" href={doc.file_path} target="_blank" rel="noreferrer" title="Buka file"><FileDown size={18}/></a> : <span className="muted xs">Tanpa berkas</span>}</div>)}</div> : <p className="muted">Belum ada dokumen pendukung yang diunggah.</p>}</section></>
+}
+
+function VerifikasiUsulanPage({ usulanRka, isPerencanaan, onVerify, onDelete, isSuperAdmin }) {
+  const menunggu = usulanRka.filter(item => item.status === 'Menunggu verifikasi')
+  const diproses = usulanRka.filter(item => item.status !== 'Menunggu verifikasi')
+  const handleKeputusan = (item, keputusan) => {
+    const catatan = keputusan === 'Disetujui'
+      ? 'Usulan disetujui oleh Sub Bagian Perencanaan dan dilanjutkan ke penyusunan DPA.'
+      : window.prompt('Tuliskan catatan perbaikan untuk pengusul:') || ''
+    if (keputusan !== 'Disetujui' && !catatan.trim()) return
+    onVerify(item.id, keputusan, catatan)
+  }
+  return <><PageTitle eyebrow="Perencanaan · Sub Bagian Perencanaan" title="Verifikasi Usulan"><div className="title-actions-inline"><span className="subtitle">{menunggu.length} usulan menunggu telaah</span></div></PageTitle>
+    <div className="callout"><div className="callout-icon"><BadgeCheck size={19}/></div><div><b>Telaah usulan oleh Sub Bagian Perencanaan</b><p>Menelaah, menyetujui, atau mengembalikan usulan beserta catatan perbaikan kepada Kepala Seksi / PPTK.</p></div></div>
+    <section className="card table-card"><div className="card-head"><div><h2>Menunggu verifikasi</h2><p>{menunggu.length} usulan perlu ditelaah</p></div><BadgeCheck className="muted-icon"/></div>
+      {menunggu.length ? <div className="download-list">{menunggu.map(item => <div className="verification-row" key={item.id}><div><b>{item.judul}</b><small>{item.bidang} · {item.jenis} · TA {item.tahun_anggaran} · {rupiah(item.pagu)}</small><small>{(item.dokumen || []).length} dokumen pendukung · Pengusul: {item.created_by || '-'}</small></div><div className="row-actions"><button className="secondary xs" type="button" onClick={() => handleKeputusan(item, 'Disetujui')}><Check size={14}/> Setujui</button><button className="table-action danger" type="button" onClick={() => handleKeputusan(item, 'Perlu perbaikan')}>Kembalikan dengan catatan</button>{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(item.id)}>Hapus</button>}</div></div>)}</div> : <p className="muted">Semua usulan sudah diverifikasi.</p>}</section>
+    <section className="card table-card"><div className="card-head"><div><h2>Riwayat verifikasi</h2><p>{diproses.length} usulan telah diproses</p></div><ClipboardCheck className="muted-icon"/></div>
+      {diproses.length ? <div className="download-list">{diproses.map(item => <div className="verification-row" key={item.id}><div><b>{item.judul}</b><small>{item.bidang} · {rupiah(item.pagu)}</small>{item.catatan_verifikator && <small className="muted">Catatan: {item.catatan_verifikator}</small>}{(item.riwayat || []).length > 0 && <small className="muted">Verifikator terakhir: {(item.riwayat || [])[0].verifikator} · {new Date((item.riwayat || [])[0].at).toLocaleString('id-ID')}</small>}</div><span className={`status ${item.status === 'Disetujui' ? 'done' : ''}`}>{item.status}</span>{item.status === 'Perlu perbaikan' && isPerencanaan && <button className="secondary xs" type="button" onClick={() => handleKeputusan(item, 'Disetujui')}>Setujui sekarang</button>}</div>)}</div> : <p className="muted">Belum ada riwayat verifikasi.</p>}</section></>
+}
 
 function RkaForm() {
   const defaultRows = [
@@ -679,6 +805,7 @@ globalRoot.render(
     <App />
   </ErrorBoundary>
 )
+
 
 
 

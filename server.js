@@ -97,6 +97,18 @@ const programs = [
   [4,'PRG-004','Pencegahan Stunting Terpadu','Kasi PMD',6,3,770000000,'Perlu perhatian','Kasi PMD','2026-09-18']
 ]
 
+const formatFileSizeServer = bytes => {
+  if (!bytes || bytes < 1024) return '1 KB'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  return `${Math.max(1, Math.round(value))} ${units[unitIndex]}`
+}
+
 const createDocPreview = (name, type) => {
   const lowerName = String(name || '').toLowerCase()
   if (lowerName.endsWith('.pdf')) return `File PDF ${name} terlampir dan siap ditinjau untuk kelengkapan laporan serta riwayat kegiatan.`
@@ -132,6 +144,16 @@ const seed = () => {
     seedDocs.forEach(x => d.run(...x))
   }
 
+  if (!db.prepare("SELECT 1 FROM docs WHERE type IN ('Renstra','Renja','DPA','RAK') LIMIT 1").get()) {
+    const a = db.prepare('INSERT INTO docs (name, type, size, date, status, preview) VALUES (?,?,?,?,?,?)')
+    ;[
+      ['Rencana Strategis (Renstra) Kecamatan 2025-2029.pdf', 'Renstra', '3.1 MB', '15 Jan 2026', 'Terverifikasi', 'Dokumen Renstra Kecamatan Kedungwaringin berisi visi, misi, arah kebijakan, dan program prioritas lima tahunan.'],
+      ['Rencana Kerja (Renja) Kecamatan 2026.pdf', 'Renja', '2.4 MB', '02 Sep 2026', 'Terverifikasi', 'Renja Kecamatan Kedungwaringin memuat rencana kerja tahunan, indikator kinerja, dan pagu anggaran tiap bidang.'],
+      ['DPA Kecamatan Kedungwaringin TA 2026.pdf', 'DPA', '1.8 MB', '10 Des 2025', 'Terverifikasi', 'Dokumen Pelaksanaan Anggaran berisi rincian belanja per kegiatan, satuan harga, dan sumber dana tahun 2026.'],
+      ['RAK Kecamatan Kedungwaringin TA 2026.xlsx', 'RAK', '956 KB', '18 Des 2025', 'Menunggu verifikasi', 'Rencana Anggaran Kas memuat penarikan dana bulanan sesuai jadwal pelaksanaan kegiatan tahun 2026.']
+    ].forEach(x => a.run(...x))
+  }
+
   if (!db.prepare('SELECT 1 FROM events LIMIT 1').get()) {
     const e = db.prepare('INSERT INTO events (date,title,type) VALUES (?,?,?)')
     ;[['2026-09-08', 'Rapat pengendalian bulanan', 'Rapat'], ['2026-09-12', 'Batas unggah laporan PPTK', 'Deadline'], ['2026-09-18', 'Monitoring Stunting Terpadu', 'Monitoring'], ['2026-09-25', 'Forum evaluasi kinerja', 'Evaluasi']].forEach(x => e.run(...x))
@@ -141,6 +163,64 @@ const seed = () => {
     const c = db.prepare('INSERT INTO admin_contacts (type,value) VALUES (?,?)')
     c.run('whatsapp', '085771076965')
     c.run('email', 'admin.siperan@kedungwaringin.go.id')
+  }
+
+  if (!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='usulan_rka'").get()) {
+    db.exec(`CREATE TABLE usulan_rka (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      judul TEXT NOT NULL,
+      bidang TEXT,
+      jenis TEXT NOT NULL DEFAULT 'Tahunan',
+      tahun_anggaran TEXT,
+      pagu REAL NOT NULL DEFAULT 0,
+      penanggung TEXT,
+      target TEXT,
+      batas_waktu TEXT,
+      catatan TEXT,
+      status TEXT NOT NULL DEFAULT 'Menunggu verifikasi',
+      catatan_verifikator TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE usulan_rka_dokumen (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      usulan_id INTEGER NOT NULL,
+      jenis_dokumen TEXT NOT NULL,
+      name TEXT NOT NULL,
+      size TEXT,
+      file_path TEXT,
+      mime_type TEXT,
+      storage_name TEXT,
+      uploaded_at TEXT NOT NULL,
+      FOREIGN KEY(usulan_id) REFERENCES usulan_rka(id) ON DELETE CASCADE
+    );
+    CREATE TABLE usulan_rka_verifikasi (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      usulan_id INTEGER NOT NULL,
+      verifikator TEXT NOT NULL,
+      keputusan TEXT NOT NULL,
+      catatan TEXT,
+      at TEXT NOT NULL,
+      FOREIGN KEY(usulan_id) REFERENCES usulan_rka(id) ON DELETE CASCADE
+    );`)
+    const seedUsulan = db.prepare(`INSERT INTO usulan_rka
+      (judul,bidang,jenis,tahun_anggaran,pagu,penanggung,target,batas_waktu,catatan,status,catatan_verifikator,created_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    seedUsulan.run(
+      'Rehabilitasi Jalan Lingkungan Desa Warung Bingkok', 'Kasi Ekonomi dan Pembangunan', 'Tahunan', '2026',
+      450000000, 'PPTK Infrastruktur', 'Panjang jalan ditingkatkan 2.400 m', '2026-10-30',
+      'Perlu cek ketersediaan pagu pada sumber dana DAU.', 'Menunggu verifikasi', null, 'Admin', new Date().toISOString(), new Date().toISOString())
+    seedUsulan.run(
+      'Peningkatan Layanan Posyandu Mawar', 'Kasi Pelayanan Publik', 'Perubahan', '2026',
+      120000000, 'Kasi Pelayanan Publik', '12 posyandu mendapat paket alat ukur gizi', '2026-09-25',
+      'Sebagai usulan perubahan menggantikan kegiatan bimtek yang ditunda.', 'Perlu perbaikan',
+      'RAB belum memuat biaya transport sebaran alat, mohon diperbarui.', 'Admin', new Date().toISOString(), new Date().toISOString())
+    const seedDoc = db.prepare(`INSERT INTO usulan_rka_dokumen
+      (usulan_id,jenis_dokumen,name,size,file_path,mime_type,storage_name,uploaded_at)
+      VALUES (?,?,?,?,?,?,?,?)`)
+    seedDoc.run(1, 'KAK', 'KAK Rehabilitasi Jalan Lingkungan 2026.pdf', '1.2 MB', null, 'application/pdf', null, new Date().toISOString())
+    seedDoc.run(1, 'RAB', 'RAB Rehabilitasi Jalan 2026.xlsx', '486 KB', null, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, new Date().toISOString())
   }
 
   if (!db.prepare('SELECT 1 FROM doc_reviews LIMIT 1').get()) {
@@ -185,7 +265,24 @@ const storage = multer.diskStorage({
     cb(null, `${Date.now()}-${safeBase}${suffix}`)
   }
 })
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } })
+const allowedDocMimes = [
+  'application/pdf',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+]
+const allowedDocExt = ['.pdf', '.xls', '.xlsx', '.doc', '.docx']
+function docFileFilter (_req, file, cb) {
+  const ext = path.extname(file.originalname || '').toLowerCase()
+  if (allowedDocMimes.includes(file.mimetype) || allowedDocExt.includes(ext)) return cb(null, true)
+  cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', 'file'))
+}
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: docFileFilter
+})
 
 app.get('/api/auth/captcha', (req, res) => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -415,9 +512,136 @@ app.post('/api/events', auth, write, (req, res) => {
   const record = db.prepare('INSERT INTO events (date,title,type) VALUES (?,?,?)').run(date, title.trim(), String(type || 'Lainnya').trim())
   res.status(201).json(db.prepare('SELECT * FROM events WHERE id=?').get(record.lastInsertRowid))
 })
+app.patch('/api/events/:id', auth, write, (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id=?').get(req.params.id)
+  if (!event) return res.status(404).json({ error: 'Kegiatan tidak ditemukan.' })
+  const { date, title, type } = req.body || {}
+  if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+    return res.status(400).json({ error: 'Format tanggal tidak valid.' })
+  }
+  if (title !== undefined && !String(title).trim()) {
+    return res.status(400).json({ error: 'Nama kegiatan tidak boleh kosong.' })
+  }
+  db.prepare('UPDATE events SET date=?, title=?, type=? WHERE id=?').run(
+    date !== undefined ? date : event.date,
+    title !== undefined ? String(title).trim() || event.title : event.title,
+    type !== undefined ? String(type).trim() || event.type : event.type,
+    event.id
+  )
+  res.json(db.prepare('SELECT * FROM events WHERE id=?').get(event.id))
+})
 app.delete('/api/events/:id', auth, superAdminOnly, (req, res) => {
   const deleted = db.prepare('DELETE FROM events WHERE id=?').run(req.params.id)
   if (!deleted.changes) return res.status(404).json({ error: 'Kegiatan tidak ditemukan.' })
+  res.json({ ok: true })
+})
+
+// ===== E-Usulan RKA / KAK =====
+const getUsulanDokumen = usulanId => db.prepare('SELECT * FROM usulan_rka_dokumen WHERE usulan_id = ? ORDER BY id').all(usulanId)
+const getUsulanRiwayat = usulanId => db.prepare('SELECT * FROM usulan_rka_verifikasi WHERE usulan_id = ? ORDER BY id DESC').all(usulanId)
+const getUsulanDetail = row => ({
+  ...row,
+  dokumen: getUsulanDokumen(row.id),
+  riwayat: getUsulanRiwayat(row.id)
+})
+
+app.get('/api/usulan-rka', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM usulan_rka ORDER BY id DESC').all()
+  res.json(rows.map(getUsulanDetail))
+})
+
+app.post('/api/usulan-rka', auth, write, (req, res) => {
+  const b = req.body || {}
+  if (!String(b.judul || '').trim()) return res.status(400).json({ error: 'Judul usulan kegiatan wajib diisi.' })
+  const now = new Date().toISOString()
+  const info = db.prepare(`INSERT INTO usulan_rka
+    (judul,bidang,jenis,tahun_anggaran,pagu,penanggung,target,batas_waktu,catatan,status,catatan_verifikator,created_by,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,'Menunggu verifikasi',NULL,?,?,?)`).run(
+    String(b.judul).trim(),
+    b.bidang || bidangOptions[0],
+    b.jenis === 'Perubahan' ? 'Perubahan' : 'Tahunan',
+    b.tahun_anggaran || '2026',
+    Number(b.pagu) || 0,
+    b.penanggung || '',
+    b.target || '',
+    b.batas_waktu || '',
+    b.catatan || '',
+    req.session.user.name,
+    now,
+    now
+  )
+  const created = db.prepare('SELECT * FROM usulan_rka WHERE id = ?').get(info.lastInsertRowid)
+  res.status(201).json(getUsulanDetail(created))
+})
+
+app.post('/api/usulan-rka/:id/dokumen', auth, write, upload.single('file'), (req, res) => {
+  const usulan = db.prepare('SELECT * FROM usulan_rka WHERE id = ?').get(req.params.id)
+  if (!usulan) return res.status(404).json({ error: 'Usulan tidak ditemukan.' })
+  const file = req.file
+  if (!file) return res.status(400).json({ error: 'Berkas dokumen wajib diunggah.' })
+  const jenisDokumen = ['KAK', 'RAB', 'Jadwal Pelaksanaan'].includes(req.body?.jenis_dokumen) ? req.body.jenis_dokumen : 'KAK'
+  const storageName = file.filename
+  const filePath = `/api/uploads/${storageName}`
+  db.prepare(`INSERT INTO usulan_rka_dokumen (usulan_id,jenis_dokumen,name,size,file_path,mime_type,storage_name,uploaded_at)
+    VALUES (?,?,?,?,?,?,?,?)`).run(
+    usulan.id,
+    jenisDokumen,
+    req.body?.name || file.originalname,
+    req.body?.size || formatFileSizeServer(file.size),
+    filePath,
+    file.mimetype,
+    storageName,
+    new Date().toISOString()
+  )
+  const doc = db.prepare('SELECT * FROM usulan_rka_dokumen WHERE usulan_id = ? ORDER BY id DESC LIMIT 1').get(usulan.id)
+  res.status(201).json(doc)
+})
+
+app.delete('/api/usulan-rka/:id/dokumen/:docId', auth, write, (req, res) => {
+  const doc = db.prepare('SELECT * FROM usulan_rka_dokumen WHERE id = ? AND usulan_id = ?').get(req.params.docId, req.params.id)
+  if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan.' })
+  if (doc.storage_name) {
+    const storedPath = path.join(uploadsDir, path.basename(doc.storage_name))
+    if (fs.existsSync(storedPath)) fs.unlinkSync(storedPath)
+  }
+  db.prepare('DELETE FROM usulan_rka_dokumen WHERE id = ?').run(doc.id)
+  res.json({ ok: true })
+})
+
+app.patch('/api/usulan-rka/:id/verifikasi', auth, write, (req, res) => {
+  const usulan = db.prepare('SELECT * FROM usulan_rka WHERE id = ?').get(req.params.id)
+  if (!usulan) return res.status(404).json({ error: 'Usulan tidak ditemukan.' })
+  const { keputusan, catatan } = req.body || {}
+  const keputusanValid = ['Disetujui', 'Perlu perbaikan', 'Ditolak'].includes(keputusan)
+  if (!keputusanValid) return res.status(400).json({ error: 'Keputusan verifikasi wajib diisi.' })
+  db.prepare('UPDATE usulan_rka SET status = ?, catatan_verifikator = ?, updated_at = ? WHERE id = ?').run(
+    keputusan,
+    String(catatan || '').trim(),
+    new Date().toISOString(),
+    usulan.id
+  )
+  db.prepare('INSERT INTO usulan_rka_verifikasi (usulan_id,verifikator,keputusan,catatan,at) VALUES (?,?,?,?,?)').run(
+    usulan.id,
+    req.session.user.name,
+    keputusan,
+    String(catatan || '').trim(),
+    new Date().toISOString()
+  )
+  const updated = db.prepare('SELECT * FROM usulan_rka WHERE id = ?').get(usulan.id)
+  res.json(getUsulanDetail(updated))
+})
+
+app.delete('/api/usulan-rka/:id', auth, superAdminOnly, (req, res) => {
+  const usulan = db.prepare('SELECT * FROM usulan_rka WHERE id = ?').get(req.params.id)
+  if (!usulan) return res.status(404).json({ error: 'Usulan tidak ditemukan.' })
+  db.prepare('SELECT storage_name FROM usulan_rka_dokumen WHERE usulan_id = ?').all(usulan.id)
+    .forEach(doc => {
+      if (doc.storage_name) {
+        const storedPath = path.join(uploadsDir, path.basename(doc.storage_name))
+        if (fs.existsSync(storedPath)) fs.unlinkSync(storedPath)
+      }
+    })
+  db.prepare('DELETE FROM usulan_rka WHERE id = ?').run(usulan.id)
   res.json({ ok: true })
 })
 
@@ -451,4 +675,18 @@ const getAvailablePort = async (startPort) => {
 
 const requestedPort = Number(process.env.PORT || 3000)
 const port = await getAvailablePort(requestedPort)
+// Handler error (termasuk penolakan tipe berkas dari multer)
+app.use((err, _req, res, _next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ error: 'Format berkas tidak didukung. Gunakan PDF, Excel (xls/xlsx), atau Word (doc/docx).' })
+    }
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'Ukuran berkas melebihi batas 10 MB.' })
+    }
+    return res.status(400).json({ error: 'Gagal mengunggah berkas: ' + err.code })
+  }
+  console.error(err)
+  res.status(500).json({ error: 'Terjadi kesalahan pada server.' })
+})
 app.listen(port, () => console.log(`SIPERAN server running at http://localhost:${port}`))
