@@ -161,9 +161,9 @@ function App() {
 
   const filteredByUnit = useMemo(() => programs.filter(p => unitFilter === 'Semua Unit' || p.bidang === unitFilter), [programs, unitFilter])
   const filtered = filteredByUnit.filter(p => `${p.nama} ${p.bidang} ${p.kode}`.toLowerCase().includes(query.toLowerCase()))
-  const totalPagu = filteredByUnit.reduce((s, p) => s + p.pagu, 0)
-  const totalRealisasi = filteredByUnit.reduce((s, p) => s + p.realisasi, 0)
-  const overall = filteredByUnit.length ? Math.round(filteredByUnit.reduce((s, p) => s + pct(p.realisasi, p.target), 0) / filteredByUnit.length) : 0
+  const totalPagu = programs.reduce((s, p) => s + p.pagu, 0)
+  const totalRealisasi = programs.reduce((s, p) => s + p.realisasi, 0)
+  const overall = programs.length ? Math.round(programs.reduce((s, p) => s + pct(p.realisasi, p.target), 0) / programs.length) : 0
   const notifications = useMemo(() => {
     const items = []
     programs.filter(p => p.status === 'Perlu perhatian' || p.realisasi < p.target * 0.6).forEach(p => items.push({ id: `program-${p.id}`, title: `Program butuh tindak lanjut`, detail: `${p.nama} · realisasi ${p.realisasi}% dari target ${p.target}%`, action: 'Lihat pengendalian', href: 'pengendalian' }))
@@ -304,7 +304,7 @@ function App() {
     <main className="main">
       <header className="topbar"><button className="hamburger" onClick={() => setSidebar(true)}><Menu size={21}/></button><div className="breadcrumbs"><span>SIPERAN</span><b>/</b><strong>{navGroups.flatMap(g => g.items).find(i => i.id === active)?.label}</strong></div><div className="top-actions"><div className="role-select"><ShieldCheck size={16}/><span>{currentUser.role}</span></div><button className="theme-switch" onClick={() => setTheme(curr => curr === 'light' ? 'dark' : 'light')} aria-label="Ganti tema"><span className="theme-icon">{theme === 'light' ? <Moon size={16}/> : <Sun size={16}/>}</span><span>{theme === 'light' ? 'Mode gelap' : 'Mode terang'}</span></button><div className="notification-wrap"><button className="icon-btn notification" onClick={() => setNotificationsOpen(v => !v)} aria-label="Lihat notifikasi"><Bell size={19}/>{notificationCount > 0 && <span className="notification-badge">{notificationCount}</span>}</button>{notificationsOpen && <div className="notification-panel"><div className="notification-head"><b>Notifikasi</b><span>{notificationCount} perlu tindak lanjut</span></div>{notifications.map(item => <div className="notification-item" key={item.id}><div className="notification-copy"><b>{item.title}</b><small>{item.detail}</small></div><button className="secondary xs" onClick={() => { setActive(item.href); setNotificationsOpen(false) }}>{item.action}</button></div>)}</div>}</div><div className="top-avatar">{currentUser.name.slice(0, 2).toUpperCase()}</div></div></header>
       <div className="content">
-        {active === 'dashboard' && <Dashboard programs={filteredByUnit} docs={docs} events={events} overall={overall} totalPagu={totalPagu} totalRealisasi={totalRealisasi} onNavigate={setActive} />}
+        {active === 'dashboard' && <Dashboard programs={programs} docs={docs} events={events} overall={overall} totalPagu={totalPagu} totalRealisasi={totalRealisasi} onNavigate={setActive} />}
         {active === 'kalender' && <CalendarPage events={events} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} onAdd={() => setModal('event')} onDelete={deleteEvent} />}
         {active === 'perencanaan' && <Planning programs={filtered} query={query} setQuery={setQuery} onAdd={() => setModal('program')} onDelete={removeProgram} onProgress={openProgressEditor} canWrite={canWrite} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
         {active === 'pengendalian' && <Control programs={programs} setPrograms={setPrograms} onUpload={() => setModal('doc')} canWrite={canWrite} notify={notify} />}
@@ -679,6 +679,11 @@ globalRoot.render(
     <App />
   </ErrorBoundary>
 )
+
+
+
+
+
 
 
 
