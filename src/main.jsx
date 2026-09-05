@@ -6,7 +6,7 @@ import {
   CircleHelp, ClipboardCheck, CloudDownload, FileDown, FileText, FolderOpen,
   Gauge, LayoutDashboard, Menu, Moon, MoreHorizontal, Plus, Search, Settings2,
   ShieldCheck, Sun, Target, Upload, Users, X, Zap, LogIn, LogOut, LockKeyhole,
-  ClipboardList, FileUp, BadgeCheck, Archive
+  ClipboardList, FileUp, BadgeCheck, Archive, UserPlus, KeyRound, Trash2
 } from 'lucide-react'
 import './styles.css'
 
@@ -382,7 +382,7 @@ function App() {
         {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('report')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'arsip' && <PlanningArchive docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
-        {active === 'pengaturan' && <Settings notify={notify} currentUser={currentUser} users={users} authLog={authLog} adminContacts={adminContacts} setAdminContacts={setAdminContacts} />}
+        {active === 'pengaturan' && <Settings notify={notify} currentUser={currentUser} users={users} setUsers={setUsers} authLog={authLog} adminContacts={adminContacts} setAdminContacts={setAdminContacts} />}
       </div>
     </main>
     {modal === 'usulan-rka' && canWrite && <Modal title="Usulan RKA / KAK" onClose={() => setModal(null)}><form className="form-grid" onSubmit={submitUsulan}><label className="full">Judul usulan kegiatan<input required name="judul" placeholder="Contoh: Rehabilitasi drainase pasar desa" /></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Jenis usulan<select name="jenis"><option>Tahunan</option><option>Perubahan</option></select></label><label>Tahun anggaran<input required name="tahun_anggaran" type="number" min="2020" max="2100" defaultValue={new Date().getFullYear() + 1} /></label><label>Pagu anggaran (Rp)<input required name="pagu" type="number" min="0" /></label><label>Penanggung jawab (Kasi / PPTK)<input required name="penanggung" placeholder="Contoh: PPTK Infrastruktur" /></label><label>Target indikator / output<input required name="target" placeholder="Contoh: 2.400 m jalan ditingkatkan" /></label><label>Batas waktu<input required name="batas_waktu" type="date" /></label><label className="full">Catatan tambahan<textarea name="catatan" rows={3} placeholder="Opsional: keterangan pendukung usulan" /></label><button className="primary full" type="submit"><Plus size={17}/> Kirim usulan RKA / KAK</button></form></Modal>}
@@ -397,19 +397,240 @@ function App() {
 }
 
 function Login({ users, onLogin }) {
+  const [tab, setTab] = useState('signin')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const [captcha, setCaptcha] = useState('')
   const [captchaInput, setCaptchaInput] = useState('')
-  const loadCaptcha = () => api('/auth/captcha').then(data => setCaptcha(data.captcha)).catch(() => setError('CAPTCHA gagal dimuat.'))
-  useEffect(() => { loadCaptcha() }, [])
-  function submit(e) {
-    e.preventDefault()
-    const form = new FormData(e.currentTarget)
-    api('/auth/login', { method:'POST', body:JSON.stringify({username:form.get('username'), password:form.get('password'), captcha: captchaInput}) })
-      .then(onLogin)
-      .catch(error => { setError(error.message || 'Login gagal.'); setCaptchaInput(''); loadCaptcha() })
+
+  const [regForm, setRegForm] = useState({
+    name: '',
+    username: '',
+    bidang: bidangOptions[0],
+    email: '',
+    password: '',
+    confirmPassword: ''
+  })
+
+  const loadCaptcha = () => {
+    api('/auth/captcha')
+      .then(data => setCaptcha(data.captcha))
+      .catch(() => setError('CAPTCHA gagal dimuat.'))
   }
-  return <main className="login-page"><section className="login-card"><div className="login-brand"><div className="brand-mark">S</div><div><b>SIPERAN</b><small>KEDUNGWARINGIN</small></div></div><div className="login-heading"><span className="eyebrow">Sistem Perencanaan dan Pelaporan Terpadu</span><h1>Selamat Datang</h1><p>Masuk untuk mengelola kinerja Kecamatan Kedungwaringin.</p></div><form className="login-form" onSubmit={submit}><label>Username<input name="username" required autoComplete="username" placeholder="Masukkan username" /></label><label>Password<input name="password" required type="password" autoComplete="current-password" placeholder="Masukkan password" /></label><div className="captcha-box"><div className="captcha-code" aria-label="Kode CAPTCHA">{captcha || '------'}</div><button className="secondary captcha-refresh" type="button" onClick={loadCaptcha}>Ganti kode</button></div><label>Kode CAPTCHA<input required value={captchaInput} onChange={e => setCaptchaInput(e.target.value.toUpperCase())} autoComplete="off" placeholder="Masukkan huruf dan angka" /></label>{error && <p className="login-error">{error}</p>}<button className="primary full" type="submit"><LogIn size={17}/> Masuk ke aplikasi</button></form><div className="login-hint"><LockKeyhole size={15}/><span>Akun demo: <b>user/user123</b>, <b>admin/admin123</b>, <b>superadmin/superadmin123</b></span></div></section></main>
+
+  useEffect(() => {
+    if (tab === 'signin') {
+      loadCaptcha()
+    }
+  }, [tab])
+
+  function handleSignIn(e) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    const form = new FormData(e.currentTarget)
+    api('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        username: form.get('username'),
+        password: form.get('password'),
+        captcha: captchaInput
+      })
+    })
+      .then(onLogin)
+      .catch(err => {
+        setError(err.message || 'Login gagal.')
+        setCaptchaInput('')
+        loadCaptcha()
+      })
+      .finally(() => setLoading(false))
+  }
+
+  function handleSignUp(e) {
+    e.preventDefault()
+    setError('')
+
+    if (regForm.password !== regForm.confirmPassword) {
+      setError('Konfirmasi password tidak cocok.')
+      return
+    }
+    if (regForm.password.length < 6) {
+      setError('Password minimal 6 karakter.')
+      return
+    }
+
+    setLoading(true)
+    api('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: regForm.name,
+        username: regForm.username,
+        bidang: regForm.bidang,
+        email: regForm.email,
+        password: regForm.password
+      })
+    })
+      .then(onLogin)
+      .catch(err => setError(err.message || 'Pendaftaran gagal.'))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <main className="login-page">
+      <section className="login-card">
+        <div className="login-brand">
+          <div className="brand-mark">S</div>
+          <div>
+            <b>SIPERAN</b>
+            <small>KEDUNGWARINGIN</small>
+          </div>
+        </div>
+
+        <div className="login-heading">
+          <span className="eyebrow">Sistem Perencanaan dan Pelaporan Terpadu</span>
+          <h1>{tab === 'signin' ? 'Selamat Datang' : 'Pendaftaran Akun'}</h1>
+          <p>
+            {tab === 'signin'
+              ? 'Masuk untuk mengelola kinerja Kecamatan Kedungwaringin.'
+              : 'Daftarkan akun staf/pejabat unit untuk mengakses SIPERAN.'}
+          </p>
+        </div>
+
+        <div className="auth-tabs">
+          <button
+            type="button"
+            className={`auth-tab ${tab === 'signin' ? 'active' : ''}`}
+            onClick={() => { setTab('signin'); setError(''); }}
+          >
+            <LogIn size={16} /> Masuk (Sign In)
+          </button>
+          <button
+            type="button"
+            className={`auth-tab ${tab === 'signup' ? 'active' : ''}`}
+            onClick={() => { setTab('signup'); setError(''); }}
+          >
+            <UserPlus size={16} /> Daftar Baru (Sign Up)
+          </button>
+        </div>
+
+        {tab === 'signin' ? (
+          <form className="login-form" onSubmit={handleSignIn}>
+            <label>
+              Username
+              <input name="username" required autoComplete="username" placeholder="Masukkan username" />
+            </label>
+            <label>
+              Password
+              <input name="password" required type="password" autoComplete="current-password" placeholder="Masukkan password" />
+            </label>
+            <div className="captcha-box">
+              <div className="captcha-code" aria-label="Kode CAPTCHA">{captcha || '------'}</div>
+              <button className="secondary captcha-refresh" type="button" onClick={loadCaptcha}>Ganti kode</button>
+            </div>
+            <label>
+              Kode CAPTCHA
+              <input
+                required
+                value={captchaInput}
+                onChange={e => setCaptchaInput(e.target.value.toUpperCase())}
+                autoComplete="off"
+                placeholder="Masukkan huruf dan angka"
+              />
+            </label>
+            {error && <p className="login-error">{error}</p>}
+            <button className="primary full" type="submit" disabled={loading}>
+              <LogIn size={17} /> {loading ? 'Memproses...' : 'Masuk ke aplikasi'}
+            </button>
+            <p className="auth-switch-text">
+              Belum memiliki akun?{' '}
+              <button type="button" className="text-link" onClick={() => { setTab('signup'); setError(''); }}>
+                Daftar akun baru di sini
+              </button>
+            </p>
+          </form>
+        ) : (
+          <form className="login-form" onSubmit={handleSignUp}>
+            <label>
+              Nama Lengkap
+              <input
+                required
+                value={regForm.name}
+                onChange={e => setRegForm({ ...regForm, name: e.target.value })}
+                placeholder="Contoh: Budi Santoso, S.STP"
+              />
+            </label>
+            <label>
+              Username
+              <input
+                required
+                value={regForm.username}
+                onChange={e => setRegForm({ ...regForm, username: e.target.value.toLowerCase() })}
+                placeholder="Contoh: budi_santoso"
+                autoComplete="off"
+              />
+            </label>
+            <label>
+              Unit / Seksi Kerja
+              <select
+                value={regForm.bidang}
+                onChange={e => setRegForm({ ...regForm, bidang: e.target.value })}
+              >
+                {bidangOptions.map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Email (Opsional)
+              <input
+                type="email"
+                value={regForm.email}
+                onChange={e => setRegForm({ ...regForm, email: e.target.value })}
+                placeholder="Contoh: budi@kecamatan.go.id"
+              />
+            </label>
+            <label>
+              Password (Minimal 6 karakter)
+              <input
+                required
+                type="password"
+                value={regForm.password}
+                onChange={e => setRegForm({ ...regForm, password: e.target.value })}
+                placeholder="Buat password aman"
+                autoComplete="new-password"
+              />
+            </label>
+            <label>
+              Konfirmasi Password
+              <input
+                required
+                type="password"
+                value={regForm.confirmPassword}
+                onChange={e => setRegForm({ ...regForm, confirmPassword: e.target.value })}
+                placeholder="Ulangi password"
+                autoComplete="new-password"
+              />
+            </label>
+            {error && <p className="login-error">{error}</p>}
+            <button className="primary full" type="submit" disabled={loading}>
+              <UserPlus size={17} /> {loading ? 'Mendaftarkan...' : 'Daftar & Masuk ke Aplikasi'}
+            </button>
+            <p className="auth-switch-text">
+              Sudah memiliki akun?{' '}
+              <button type="button" className="text-link" onClick={() => { setTab('signin'); setError(''); }}>
+                Masuk di sini
+              </button>
+            </p>
+          </form>
+        )}
+
+        <div className="login-hint">
+          <LockKeyhole size={15} />
+          <span>Akun demo: <b>user/user123</b>, <b>admin/admin123</b>, <b>superadmin/superadmin123</b></span>
+        </div>
+      </section>
+    </main>
+  )
 }
 
 function PageTitle({ eyebrow, title, children }) { return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1></div><div className="title-actions">{children}</div></div> }
@@ -743,9 +964,11 @@ function PlanningArchive({ docs, onUpload, onDelete, canWrite, isSuperAdmin }) {
     <section className="card table-card"><div className="card-head"><div><h2>{category}</h2><p>{archiveDocs.length} dokumen tersedia</p></div><FolderOpen className="muted-icon"/></div><div className="download-list">{archiveDocs.length ? archiveDocs.map(doc => <div className="download-row" key={doc.id}><div className="file-icon"><FileText size={18}/></div><div><b>{doc.name}</b><small>{doc.type} · {doc.size} · {doc.date}</small></div><span className={`status ${doc.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{doc.status}</span><button className="icon-btn" title="Buka arsip" onClick={() => download(doc)}><FileDown size={18}/></button>{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(doc.id)}>Hapus</button>}</div>) : <p className="muted">Belum ada dokumen pada kategori ini. Unggah dokumen dan pilih jenis arsipnya.</p>}</div></section>
   </>
 }
-function Settings({ currentUser, users, authLog, adminContacts, setAdminContacts, notify }) {
+function Settings({ currentUser, users, setUsers, authLog, adminContacts, setAdminContacts, notify }) {
   const [form, setForm] = useState({ type: 'whatsapp', value: '' })
   const [editingId, setEditingId] = useState(null)
+  const [resetModalUser, setResetModalUser] = useState(null)
+  const [newPassword, setNewPassword] = useState('')
 
   const whatsapp = adminContacts.find(c => c.type === 'whatsapp')?.value || '085771076965'
   const email = adminContacts.find(c => c.type === 'email')?.value || 'admin.siperan@kedungwaringin.go.id'
@@ -793,7 +1016,289 @@ function Settings({ currentUser, users, authLog, adminContacts, setAdminContacts
     setEditingId(item.id)
   }
 
-  return <><PageTitle eyebrow="Konfigurasi sistem" title="Pengaturan & Bantuan"/><div className="settings-grid"><section className="card settings-card"><div className="card-head"><div><h2>Profil & akses</h2><p>Akun dan kewenangan yang sedang digunakan.</p></div><Users className="muted-icon"/></div><div className="permission"><ShieldCheck size={18}/><div><b>{currentUser.name}</b><small>{currentUser.username} · {currentUser.role}</small></div></div><p className="muted">Data akun dan sesi tersimpan pada database lokal perangkat ini.</p></section><section className="card settings-card"><div className="card-head"><div><h2>Kontak admin</h2><p>Hubungi admin SIPERAN untuk bantuan dan koordinasi.</p></div><CircleHelp className="muted-icon"/></div><div className="contact-list">{adminContacts.map(contact => <a key={contact.id} href={contact.type === 'whatsapp' ? `https://wa.me/${contact.value.replace(/\D/g, '').replace(/^0/, '62')}` : `mailto:${contact.value}`} target={contact.type === 'whatsapp' ? '_blank' : undefined} rel={contact.type === 'whatsapp' ? 'noreferrer' : undefined}>{contact.type === 'whatsapp' ? 'WhatsApp:' : 'Email:'} {contact.value}</a>)}</div></section>{currentUser.role === 'Super Admin' && <section className="card settings-card"><div className="card-head"><div><h2>Kelola kontak admin</h2><p>Hanya Super Admin yang dapat menambah, memperbarui, atau menghapus kontak.</p></div><ShieldCheck className="muted-icon"/></div><form className="form-grid" onSubmit={submitContact}><label>Tipe kontak<select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label><label>Nilai kontak<input value={form.value} onChange={e => setForm({ ...form, value: e.target.value })} placeholder={form.type === 'whatsapp' ? 'Contoh: 085771076965' : 'Contoh: admin@domain.go.id'} /></label><div className="action-row"><button className="primary" type="submit">{editingId ? 'Simpan perubahan' : 'Tambah kontak'}</button>{editingId && <button className="secondary" type="button" onClick={resetForm}>Batal</button>}</div></form><div className="contact-list compact">{adminContacts.map(contact => <div className="mini-contact" key={contact.id}><span>{contact.type === 'whatsapp' ? 'WhatsApp' : 'Email'}</span><strong>{contact.value}</strong><div className="mini-contact-actions"><button type="button" className="secondary" onClick={() => editContact(contact)}>Edit</button><button type="button" className="danger" onClick={() => deleteContact(contact.id)}>Hapus</button></div></div>)}</div></section>}{currentUser.role === 'Super Admin' && <section className="card settings-card"><div className="card-head"><div><h2>Manajemen pengguna</h2><p>{users.length} akun terdaftar · {authLog.length} aktivitas autentikasi</p></div><Users className="muted-icon"/></div>{users.map(user => <div className="user-row" key={user.id}><div><b>{user.name}</b><small>{user.username}</small></div><span className="status">{user.role}</span></div>)}</section>}<section className="card settings-card"><div className="card-head"><div><h2>Panduan singkat</h2><p>Alur kerja SIPERAN yang direkomendasikan</p></div><CircleHelp className="muted-icon"/></div><ol className="guide"><li><b>Rencanakan</b><span>Tambahkan program, indikator, dan pagu.</span></li><li><b>Kendalikan</b><span>Perbarui realisasi dan lampirkan bukti.</span></li><li><b>Evaluasi</b><span>Verifikasi dokumen dan unduh laporan.</span></li></ol></section></div></> }
+  function updateUserRole(user, newRole) {
+    if (user.id === currentUser.id && newRole !== 'Super Admin') {
+      notify('Anda tidak dapat menurunkan role akun sendiri.')
+      return
+    }
+    api(`/users/${user.id}`, { method: 'PATCH', body: JSON.stringify({ role: newRole }) })
+      .then(updated => {
+        setUsers(list => list.map(u => u.id === user.id ? { ...u, role: updated.role } : u))
+        notify(`Role ${user.name} diubah menjadi ${newRole}`)
+      })
+      .catch(err => notify(err.message || 'Gagal mengubah role'))
+  }
+
+  function toggleUserStatus(user) {
+    if (user.id === currentUser.id) {
+      notify('Anda tidak dapat menonaktifkan akun sendiri.')
+      return
+    }
+    const nextStatus = user.status === 'Nonaktif' ? 'Aktif' : 'Nonaktif'
+    api(`/users/${user.id}`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus }) })
+      .then(updated => {
+        setUsers(list => list.map(u => u.id === user.id ? { ...u, status: updated.status } : u))
+        notify(`Status ${user.name} diubah menjadi ${nextStatus}`)
+      })
+      .catch(err => notify(err.message || 'Gagal mengubah status'))
+  }
+
+  function handleResetPassword(e) {
+    e.preventDefault()
+    if (!resetModalUser || !newPassword) return
+    if (newPassword.length < 6) {
+      notify('Password minimal 6 karakter.')
+      return
+    }
+    api(`/users/${resetModalUser.id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ password: newPassword })
+    })
+      .then(res => {
+        notify(res.message || 'Password berhasil direset')
+        setResetModalUser(null)
+        setNewPassword('')
+      })
+      .catch(err => notify(err.message || 'Gagal mereset password'))
+  }
+
+  function deleteUser(user) {
+    if (user.id === currentUser.id) {
+      notify('Anda tidak dapat menghapus akun Anda sendiri.')
+      return
+    }
+    if (!window.confirm(`Yakin ingin menghapus akun pengguna "${user.name}" (${user.username})?`)) return
+    api(`/users/${user.id}`, { method: 'DELETE' })
+      .then(() => {
+        setUsers(list => list.filter(u => u.id !== user.id))
+        notify(`Akun ${user.name} berhasil dihapus`)
+      })
+      .catch(err => notify(err.message || 'Gagal menghapus pengguna'))
+  }
+
+  return (
+    <>
+      <PageTitle eyebrow="Konfigurasi sistem" title="Pengaturan & Bantuan" />
+      <div className="settings-grid">
+        <section className="card settings-card">
+          <div className="card-head">
+            <div>
+              <h2>Profil & akses</h2>
+              <p>Akun dan kewenangan yang sedang digunakan.</p>
+            </div>
+            <Users className="muted-icon" />
+          </div>
+          <div className="permission">
+            <ShieldCheck size={18} />
+            <div>
+              <b>{currentUser.name}</b>
+              <small>{currentUser.username} · {currentUser.role} · {currentUser.bidang || 'Kecamatan Kedungwaringin'}</small>
+            </div>
+          </div>
+          <p className="muted">Data akun dan sesi tersimpan pada database lokal perangkat ini.</p>
+        </section>
+
+        <section className="card settings-card">
+          <div className="card-head">
+            <div>
+              <h2>Kontak admin</h2>
+              <p>Hubungi admin SIPERAN untuk bantuan dan koordinasi.</p>
+            </div>
+            <CircleHelp className="muted-icon" />
+          </div>
+          <div className="contact-list">
+            {adminContacts.map(contact => (
+              <a
+                key={contact.id}
+                href={contact.type === 'whatsapp' ? `https://wa.me/${contact.value.replace(/\D/g, '').replace(/^0/, '62')}` : `mailto:${contact.value}`}
+                target={contact.type === 'whatsapp' ? '_blank' : undefined}
+                rel={contact.type === 'whatsapp' ? 'noreferrer' : undefined}
+              >
+                {contact.type === 'whatsapp' ? 'WhatsApp:' : 'Email:'} {contact.value}
+              </a>
+            ))}
+          </div>
+        </section>
+
+        {currentUser.role === 'Super Admin' && (
+          <section className="card settings-card">
+            <div className="card-head">
+              <div>
+                <h2>Kelola kontak admin</h2>
+                <p>Hanya Super Admin yang dapat menambah, memperbarui, atau menghapus kontak.</p>
+              </div>
+              <ShieldCheck className="muted-icon" />
+            </div>
+            <form className="form-grid" onSubmit={submitContact}>
+              <label>
+                Tipe kontak
+                <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="email">Email</option>
+                </select>
+              </label>
+              <label>
+                Nilai kontak
+                <input
+                  value={form.value}
+                  onChange={e => setForm({ ...form, value: e.target.value })}
+                  placeholder={form.type === 'whatsapp' ? 'Contoh: 085771076965' : 'Contoh: admin@domain.go.id'}
+                />
+              </label>
+              <div className="action-row">
+                <button className="primary" type="submit">
+                  {editingId ? 'Simpan perubahan' : 'Tambah kontak'}
+                </button>
+                {editingId && (
+                  <button className="secondary" type="button" onClick={resetForm}>
+                    Batal
+                  </button>
+                )}
+              </div>
+            </form>
+            <div className="contact-list compact">
+              {adminContacts.map(contact => (
+                <div className="mini-contact" key={contact.id}>
+                  <span>{contact.type === 'whatsapp' ? 'WhatsApp' : 'Email'}</span>
+                  <strong>{contact.value}</strong>
+                  <div className="mini-contact-actions">
+                    <button type="button" className="secondary" onClick={() => editContact(contact)}>Edit</button>
+                    <button type="button" className="danger" onClick={() => deleteContact(contact.id)}>Hapus</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {currentUser.role === 'Super Admin' && (
+          <section className="card settings-card user-management-card">
+            <div className="card-head">
+              <div>
+                <h2>Manajemen Pengguna (Maintenance)</h2>
+                <p>{(users || []).length} akun terdaftar · {authLog.length} riwayat aktivitas autentikasi</p>
+              </div>
+              <Users className="muted-icon" />
+            </div>
+            <div className="user-management-list">
+              {(users || []).map(user => (
+                <div className="user-manage-row" key={user.id}>
+                  <div className="user-info-col">
+                    <div className="user-name-line">
+                      <b>{user.name}</b>
+                      <span className={`status ${user.status === 'Nonaktif' ? 'warn' : 'done'}`}>
+                        {user.status || 'Aktif'}
+                      </span>
+                    </div>
+                    <small className="muted">
+                      Username: <strong>{user.username}</strong>
+                      {user.email ? ` · Email: ${user.email}` : ''}
+                    </small>
+                    <small className="muted">
+                      Unit: {user.bidang || '-'} · Login terakhir:{' '}
+                      {user.last_login ? new Date(user.last_login).toLocaleString('id-ID') : 'Belum pernah'}
+                    </small>
+                  </div>
+
+                  <div className="user-actions-col">
+                    <div className="role-selector-wrap">
+                      <select
+                        value={user.role}
+                        disabled={user.id === currentUser.id}
+                        onChange={e => updateUserRole(user, e.target.value)}
+                        className="role-select-inline"
+                        title="Ubah Role Pengguna"
+                      >
+                        <option value="User">User</option>
+                        <option value="Admin">Admin</option>
+                        <option value="Super Admin">Super Admin</option>
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`secondary xs ${user.status === 'Nonaktif' ? 'btn-activate' : 'btn-deactivate'}`}
+                      disabled={user.id === currentUser.id}
+                      onClick={() => toggleUserStatus(user)}
+                      title={user.status === 'Nonaktif' ? 'Aktifkan akun' : 'Nonaktifkan akun'}
+                    >
+                      {user.status === 'Nonaktif' ? 'Aktifkan' : 'Nonaktifkan'}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="secondary xs"
+                      onClick={() => { setResetModalUser(user); setNewPassword(''); }}
+                      title="Reset Password Akun"
+                    >
+                      <KeyRound size={13} /> Reset Pass
+                    </button>
+
+                    {user.id !== currentUser.id && (
+                      <button
+                        type="button"
+                        className="danger xs"
+                        onClick={() => deleteUser(user)}
+                        title="Hapus Akun Pengguna"
+                      >
+                        <Trash2 size={13} /> Hapus
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className="card settings-card">
+          <div className="card-head">
+            <div>
+              <h2>Panduan singkat</h2>
+              <p>Alur kerja SIPERAN yang direkomendasikan</p>
+            </div>
+            <CircleHelp className="muted-icon" />
+          </div>
+          <ol className="guide">
+            <li><b>Rencanakan</b><span>Tambahkan program, indikator, dan pagu anggaran.</span></li>
+            <li><b>Kendalikan</b><span>Perbarui realisasi fisik & keuangan, lalu lampirkan bukti.</span></li>
+            <li><b>Evaluasi</b><span>Verifikasi dokumen berkala dan unduh laporan kinerja.</span></li>
+          </ol>
+        </section>
+      </div>
+
+      {resetModalUser && (
+        <Modal title={`Reset Password: ${resetModalUser.name} (${resetModalUser.username})`} onClose={() => setResetModalUser(null)}>
+          <form className="form-grid" onSubmit={handleResetPassword}>
+            <p className="muted">
+              Masukkan password baru untuk pengguna <b>{resetModalUser.username}</b>. Minimal 6 karakter.
+            </p>
+            <label>
+              Password Baru
+              <input
+                required
+                type="password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                placeholder="Masukkan password baru"
+                autoComplete="new-password"
+                minLength={6}
+              />
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="secondary" onClick={() => setResetModalUser(null)}>
+                Batal
+              </button>
+              <button type="submit" className="primary">
+                Simpan Password Baru
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
+  )
+}
 function Modal({ title, onClose, children }) { return <div className="modal-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}><div className="modal"><div className="modal-head"><h2>{title}</h2><button className="icon-btn" onClick={onClose}><X size={19}/></button></div>{children}</div></div> }
 
 const rootElement = document.getElementById('root')

@@ -1,10 +1,11 @@
-﻿import express from 'express'
+import express from 'express'
 import session from 'express-session'
 import multer from 'multer'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import crypto from 'node:crypto'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -23,6 +24,36 @@ CREATE TABLE IF NOT EXISTS section_approvals (id INTEGER PRIMARY KEY AUTOINCREME
 CREATE TABLE IF NOT EXISTS rka_forms (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, tahun TEXT NOT NULL, satuan TEXT NOT NULL, formulir TEXT NOT NULL, total REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS rka_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, rka_id INTEGER NOT NULL, kode TEXT, uraian TEXT, koefisien TEXT, satuan TEXT, harga TEXT, ppn TEXT, jumlah TEXT, FOREIGN KEY(rka_id) REFERENCES rka_forms(id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS monthly_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, periode TEXT NOT NULL, pagu REAL NOT NULL DEFAULT 0, realisasi_keuangan REAL NOT NULL DEFAULT 0, realisasi_fisik REAL NOT NULL DEFAULT 0, catatan TEXT, created_at TEXT NOT NULL);`)
+
+for (const col of [
+  { name: 'email', def: 'TEXT' },
+  { name: 'bidang', def: 'TEXT' },
+  { name: 'status', def: "TEXT NOT NULL DEFAULT 'Aktif'" },
+  { name: 'created_at', def: 'TEXT' },
+  { name: 'last_login', def: 'TEXT' }
+]) {
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN ${col.name} ${col.def}`)
+  } catch {
+    // ignore if column already exists
+  }
+}
+
+const hashPassword = (password) => {
+  const salt = crypto.randomBytes(16).toString('hex')
+  return `scrypt:${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`
+}
+
+const verifyPassword = (password, stored) => {
+  if (!stored) return false
+  if (!stored.startsWith('scrypt:')) return stored === password
+  const parts = stored.split(':')
+  if (parts.length !== 3) return false
+  const [, salt, hash] = parts
+  const actual = crypto.scryptSync(password, salt, 64)
+  const expected = Buffer.from(hash, 'hex')
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected)
+}
 db.exec(`CREATE TABLE IF NOT EXISTS login_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT,
@@ -119,12 +150,28 @@ const createDocPreview = (name, type) => {
 
 const seed = () => {
   if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
-    const u = db.prepare('INSERT INTO users VALUES (?,?,?,?,?)')
-    u.run(1, 'user', 'user123', 'Pengguna SIPERAN', 'User')
-    u.run(2, 'admin', 'admin123', 'Admin', 'Admin')
-    u.run(3, 'superadmin', 'superadmin123', 'Super Admin', 'Super Admin')
+    const u = db.prepare('INSERT INTO users (id, username, password, name, role, bidang, status, created_at) VALUES (?,?,?,?,?,?,?,?)')
+    const now = new Date().toISOString()
+    u.run(1, 'user', hashPassword('user123'), 'Pengguna SIPERAN', 'User', 'Kasi Pelayanan Publik', 'Aktif', now)
+    u.run(2, 'admin', hashPassword('admin123'), 'Admin', 'Admin', 'Sekretariat - Bagian Perencanaan dan Keuangan', 'Aktif', now)
+    u.run(3, 'superadmin', hashPassword('superadmin123'), 'Super Admin', 'Super Admin', 'Sekretariat - Bagian Umum dan Kepegawaian', 'Aktif', now)
   } else {
     db.prepare("UPDATE users SET name = 'Admin' WHERE username = 'admin' AND name <> 'Admin'").run()
+    for (const [uname, pass] of [['user', 'user123'], ['admin', 'admin123'], ['superadmin', 'superadmin123']]) {
+      const userRec = db.prepare('SELECT id, password, status, bidang FROM users WHERE username = ?').get(uname)
+      if (userRec) {
+        if (!userRec.password.startsWith('scrypt:')) {
+          db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashPassword(pass), userRec.id)
+        }
+        if (!userRec.status) {
+          db.prepare("UPDATE users SET status = 'Aktif' WHERE id = ?").run(userRec.id)
+        }
+        if (!userRec.bidang) {
+          const defaultBidang = uname === 'user' ? 'Kasi Pelayanan Publik' : uname === 'admin' ? 'Sekretariat - Bagian Perencanaan dan Keuangan' : 'Sekretariat - Bagian Umum dan Kepegawaian'
+          db.prepare("UPDATE users SET bidang = ? WHERE id = ?").run(defaultBidang, userRec.id)
+        }
+      }
+    }
   }
 
   db.prepare("UPDATE programs SET bidang = CASE bidang WHEN 'Infrastruktur' THEN 'Kasi Ekonomi dan Pembangunan' WHEN 'Pelayanan Publik' THEN 'Kasi Pelayanan Publik' WHEN 'Ekonomi' THEN 'Kasi Ekonomi dan Pembangunan' WHEN 'Kesehatan' THEN 'Kasi PMD' ELSE bidang END WHERE bidang IN ('Infrastruktur','Pelayanan Publik','Ekonomi','Kesehatan')").run()
@@ -307,15 +354,92 @@ app.use('/api/auth/login', (req, res, next) => {
 })
 
 app.post('/api/auth/login', (req, res) => {
-  const u = db.prepare('SELECT id,username,name,role FROM users WHERE username=? AND password=?').get(req.body.username, req.body.password)
-  if (!u) {
+  const username = String(req.body?.username || '').trim()
+  const password = String(req.body?.password || '')
+  if (!username || !password) {
+    req.loginAttemptLog?.(false, 'MISSING_FIELDS')
+    return res.status(400).json({ error: 'Username dan password wajib diisi.' })
+  }
+
+  const u = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username)
+  if (!u || !verifyPassword(password, u.password)) {
     req.loginAttemptLog?.(false, 'INVALID_CREDENTIALS')
     return res.status(401).json({ error: 'Username atau password tidak sesuai.' })
   }
-  req.session.user = u
-  db.prepare('INSERT INTO auth_log(username,role,action,at) VALUES (?,?,?,?)').run(u.username, u.role, 'SIGN_IN', new Date().toISOString())
+
+  if (u.status === 'Nonaktif') {
+    req.loginAttemptLog?.(false, 'ACCOUNT_INACTIVE')
+    return res.status(403).json({ error: 'Akun Anda sedang dinonaktifkan. Silakan hubungi admin.' })
+  }
+
+  // Auto-upgrade plaintext to scrypt if legacy
+  if (!u.password.startsWith('scrypt:')) {
+    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashPassword(password), u.id)
+  }
+
+  const now = new Date().toISOString()
+  db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(now, u.id)
+
+  const sessionUser = {
+    id: u.id,
+    username: u.username,
+    name: u.name,
+    role: u.role,
+    bidang: u.bidang || 'Kasi Pelayanan Publik',
+    email: u.email || '',
+    status: u.status || 'Aktif'
+  }
+
+  req.session.user = sessionUser
+  db.prepare('INSERT INTO auth_log(username,role,action,at) VALUES (?,?,?,?)').run(u.username, u.role, 'SIGN_IN', now)
   req.loginAttemptLog?.(true, 'SIGN_IN')
-  res.json(u)
+  res.json(sessionUser)
+})
+
+app.post('/api/auth/register', (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  const username = String(req.body?.username || '').trim().toLowerCase()
+  const password = String(req.body?.password || '')
+  const bidang = normalizeBidang(req.body?.bidang)
+  const email = String(req.body?.email || '').trim()
+
+  if (!name || name.length < 2) {
+    return res.status(400).json({ error: 'Nama lengkap wajib diisi minimal 2 karakter.' })
+  }
+  if (!username || username.length < 3) {
+    return res.status(400).json({ error: 'Username wajib minimal 3 karakter.' })
+  }
+  if (!/^[a-z0-9_.-]+$/.test(username)) {
+    return res.status(400).json({ error: 'Username hanya boleh huruf kecil, angka, titik, strip, atau underscore.' })
+  }
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'Password wajib minimal 6 karakter.' })
+  }
+
+  const existing = db.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE').get(username)
+  if (existing) {
+    return res.status(400).json({ error: 'Username sudah digunakan. Silakan pilih username lain.' })
+  }
+
+  const now = new Date().toISOString()
+  const hashed = hashPassword(password)
+  const insert = db.prepare(
+    'INSERT INTO users (username, password, name, role, bidang, email, status, created_at, last_login) VALUES (?,?,?,?,?,?,?,?,?)'
+  ).run(username, hashed, name, 'User', bidang, email, 'Aktif', now, now)
+
+  const newUser = {
+    id: Number(insert.lastInsertRowid),
+    username,
+    name,
+    role: 'User',
+    bidang,
+    email,
+    status: 'Aktif'
+  }
+
+  req.session.user = newUser
+  db.prepare('INSERT INTO auth_log(username,role,action,at) VALUES (?,?,?,?)').run(username, 'User', 'SIGN_UP', now)
+  res.status(201).json(newUser)
 })
 
 app.post('/api/auth/logout', auth, (req, res) => {
@@ -325,7 +449,81 @@ app.post('/api/auth/logout', auth, (req, res) => {
 })
 app.get('/api/auth/me', (req, res) => res.json(req.session.user || null))
 app.get('/api/log', auth, (req, res) => res.json(db.prepare('SELECT * FROM auth_log ORDER BY id DESC').all()))
-app.get('/api/users', auth, (req, res) => res.json(req.session.user.role === 'Super Admin' ? db.prepare('SELECT id,username,name,role FROM users').all() : []))
+
+app.get('/api/users', auth, (req, res) => {
+  if (req.session.user.role !== 'Super Admin' && req.session.user.role !== 'Admin') {
+    return res.json([])
+  }
+  const rows = db.prepare('SELECT id, username, name, role, bidang, email, status, created_at, last_login FROM users ORDER BY id ASC').all()
+  res.json(rows)
+})
+
+app.patch('/api/users/:id', auth, superAdminOnly, (req, res) => {
+  const targetId = Number(req.params.id)
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId)
+  if (!target) return res.status(404).json({ error: 'Pengguna tidak ditemukan.' })
+
+  const { name, role, status, bidang, email } = req.body || {}
+  const validRoles = ['User', 'Admin', 'Super Admin']
+  const validStatuses = ['Aktif', 'Nonaktif']
+
+  if (role && !validRoles.includes(role)) {
+    return res.status(400).json({ error: 'Role tidak valid.' })
+  }
+  if (status && !validStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Status tidak valid.' })
+  }
+
+  if (targetId === req.session.user.id) {
+    if (role && role !== 'Super Admin') return res.status(400).json({ error: 'Anda tidak dapat menurunkan role akun sendiri.' })
+    if (status && status !== 'Aktif') return res.status(400).json({ error: 'Anda tidak dapat menonaktifkan akun sendiri.' })
+  }
+
+  const updatedName = name !== undefined ? String(name).trim() : target.name
+  const updatedRole = role !== undefined ? role : target.role
+  const updatedStatus = status !== undefined ? status : target.status
+  const updatedBidang = bidang !== undefined ? normalizeBidang(bidang) : (target.bidang || 'Kasi Pelayanan Publik')
+  const updatedEmail = email !== undefined ? String(email).trim() : (target.email || '')
+
+  db.prepare('UPDATE users SET name = ?, role = ?, status = ?, bidang = ?, email = ? WHERE id = ?')
+    .run(updatedName, updatedRole, updatedStatus, updatedBidang, updatedEmail, targetId)
+
+  if (targetId === req.session.user.id) {
+    req.session.user.name = updatedName
+    req.session.user.role = updatedRole
+    req.session.user.bidang = updatedBidang
+    req.session.user.email = updatedEmail
+  }
+
+  const updated = db.prepare('SELECT id, username, name, role, bidang, email, status, created_at, last_login FROM users WHERE id = ?').get(targetId)
+  res.json(updated)
+})
+
+app.post('/api/users/:id/reset-password', auth, superAdminOnly, (req, res) => {
+  const targetId = Number(req.params.id)
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId)
+  if (!target) return res.status(404).json({ error: 'Pengguna tidak ditemukan.' })
+
+  const newPassword = String(req.body?.password || '').trim()
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: 'Password baru minimal 6 karakter.' })
+  }
+
+  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashPassword(newPassword), targetId)
+  res.json({ ok: true, message: `Password pengguna ${target.username} berhasil direset.` })
+})
+
+app.delete('/api/users/:id', auth, superAdminOnly, (req, res) => {
+  const targetId = Number(req.params.id)
+  if (targetId === req.session.user.id) {
+    return res.status(400).json({ error: 'Anda tidak dapat menghapus akun Anda sendiri.' })
+  }
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId)
+  if (!target) return res.status(404).json({ error: 'Pengguna tidak ditemukan.' })
+
+  db.prepare('DELETE FROM users WHERE id = ?').run(targetId)
+  res.json({ ok: true })
+})
 app.get('/api/admin-contacts', auth, (req, res) => res.json(db.prepare('SELECT * FROM admin_contacts ORDER BY id').all()))
 app.post('/api/admin-contacts', auth, superAdminOnly, (req, res) => {
   const { type, value } = req.body || {}
