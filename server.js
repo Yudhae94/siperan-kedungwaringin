@@ -336,7 +336,29 @@ app.get('/api/auth/captcha', (req, res) => {
   let value = ''
   for (let i = 0; i < 6; i += 1) value += chars[Math.floor(Math.random() * chars.length)]
   req.session.loginCaptcha = value
-  res.json({ captcha: value })
+
+  // Render sebagai SVG bergaya captcha (karakter miring + garis coret acak)
+  const width = 240
+  const height = 80
+  const n = value.length
+  const slot = width / n
+  const rand = (min, max) => min + Math.random() * (max - min)
+  const glyphs = [...value].map((ch, i) => {
+    const rotate = rand(-28, 28)
+    const y = height / 2 + rand(-8, 8)
+    const size = rand(34, 42)
+    const x = slot * i + slot / 2 + rand(-5, 5)
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" transform="rotate(${rotate.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="${size.toFixed(1)}" fill="#0d6b58" text-anchor="middle" dominant-baseline="central">${ch}</text>`
+  }).join('')
+  let lines = ''
+  for (let i = 0; i < 5; i += 1) {
+    const x1 = rand(0, width), y1 = rand(0, height)
+    const x2 = x1 + rand(-width * 0.7, width * 0.7), y2 = y1 + rand(-height * 0.5, height * 0.5)
+    lines += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#0d6b58" stroke-width="${rand(0.6, 1.2).toFixed(2)}" opacity="${rand(0.35, 0.65).toFixed(2)}"/>`
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Kode CAPTCHA"><rect width="${width}" height="${height}" fill="#eef8f5"/>${lines}${glyphs}</svg>`
+  res.setHeader('Cache-Control', 'no-store')
+  res.json({ captcha: `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}` })
 })
 
 app.use('/api/auth/login', (req, res, next) => {

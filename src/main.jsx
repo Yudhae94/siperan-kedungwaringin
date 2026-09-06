@@ -508,8 +508,12 @@ function Login({ users, onLogin }) {
               <input name="password" required type="password" autoComplete="current-password" placeholder="Masukkan password" />
             </label>
             <div className="captcha-box">
-              <div className="captcha-code" aria-label="Kode CAPTCHA">{captcha || '------'}</div>
-              <button className="secondary captcha-refresh" type="button" onClick={loadCaptcha}>Ganti kode</button>
+              <div className="captcha-image" aria-label="Kode CAPTCHA">
+                {captcha
+                  ? <img src={captcha} alt="Kode CAPTCHA" draggable="false" />
+                  : <span className="captcha-loading">Memuat kode…</span>}
+              </div>
+              <button className="secondary captcha-refresh" type="button" onClick={loadCaptcha} aria-label="Ganti kode CAPTCHA"><RotateCcw size={16} /></button>
             </div>
             <label>
               Kode CAPTCHA
@@ -607,11 +611,6 @@ function Login({ users, onLogin }) {
             </p>
           </form>
         )}
-
-        <div className="login-hint">
-          <LockKeyhole size={15} />
-          <span>Akun demo: <b>user/user123</b>, <b>admin/admin123</b>, <b>superadmin/superadmin123</b></span>
-        </div>
       </section>
     </main>
   )
