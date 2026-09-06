@@ -194,8 +194,8 @@ function App() {
   if (!currentUser) return <Login users={users} onLogin={signIn} />
 
   function addProgram(e) {
-    if (!canWrite) return
     e.preventDefault()
+    if (!canWrite) return
     const f = new FormData(e.currentTarget)
     api('/programs', { method:'POST', body: JSON.stringify({ nama:f.get('nama'), bidang:f.get('bidang'), target:Number(f.get('target')), pagu:Number(f.get('pagu')), penanggung:f.get('penanggung'), deadline:f.get('deadline') }) }).then(p => { setPrograms([...programs,p]); setModal(null); notify('Program baru berhasil ditambahkan') }).catch(e => notify(e.message))
   }
@@ -385,6 +385,7 @@ function App() {
         {active === 'pengaturan' && <Settings notify={notify} currentUser={currentUser} users={users} setUsers={setUsers} authLog={authLog} adminContacts={adminContacts} setAdminContacts={setAdminContacts} />}
       </div>
     </main>
+    {modal === 'program' && canWrite && <Modal title="E-Usulan Kegiatan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addProgram}><label className="full">Nama usulan kegiatan<input required name="nama" placeholder="Contoh: Peningkatan Jalan Lingkungan" /></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Pagu anggaran (Rp)<input required name="pagu" type="number" min="0" /></label><label>Target (%)<input required name="target" type="number" min="1" max="100" /></label><label>Penanggung jawab (Kasi / PPTK)<input required name="penanggung" placeholder="Contoh: PPTK Infrastruktur" /></label><label>Deadline<input name="deadline" type="date" /></label><button className="primary full" type="submit"><Plus size={17}/> Tambah E-Usulan Kegiatan</button></form></Modal>}
     {modal === 'usulan-rka' && canWrite && <Modal title="Usulan RKA / KAK" onClose={() => setModal(null)}><form className="form-grid" onSubmit={submitUsulan}><label className="full">Judul usulan kegiatan<input required name="judul" placeholder="Contoh: Rehabilitasi drainase pasar desa" /></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Jenis usulan<select name="jenis"><option>Tahunan</option><option>Perubahan</option></select></label><label>Tahun anggaran<input required name="tahun_anggaran" type="number" min="2020" max="2100" defaultValue={new Date().getFullYear() + 1} /></label><label>Pagu anggaran (Rp)<input required name="pagu" type="number" min="0" /></label><label>Penanggung jawab (Kasi / PPTK)<input required name="penanggung" placeholder="Contoh: PPTK Infrastruktur" /></label><label>Target indikator / output<input required name="target" placeholder="Contoh: 2.400 m jalan ditingkatkan" /></label><label>Batas waktu<input required name="batas_waktu" type="date" /></label><label className="full">Catatan tambahan<textarea name="catatan" rows={3} placeholder="Opsional: keterangan pendukung usulan" /></label><button className="primary full" type="submit"><Plus size={17}/> Kirim usulan RKA / KAK</button></form></Modal>}
     {modal?.type === 'upload-pendukung' && canWrite && <Modal title="Upload Dokumen Pendukung" onClose={() => setModal(null)}><form className="form-grid" onSubmit={e => uploadDokumenPendukung(e, modal.usulanId)}><label className="full">Jenis dokumen<select name="jenis_dokumen"><option>KAK</option><option>RAB</option><option>Jadwal Pelaksanaan</option></select></label><label className="upload-field full">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB per dokumen.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
     {progressProgram && canWrite && <Modal title={`Atur progress ${progressProgram.kode}`} onClose={() => setProgressProgram(null)}><div className="progress-editor"><p><b>{progressProgram.nama}</b></p><label>Progress saat ini: <strong>{progressValue}%</strong><input type="range" min="0" max="100" step="10" value={progressValue} onChange={e => setProgressValue(Number(e.target.value))}/></label><div className="step-grid">{[0,10,20,30,40,50,60,70,80,90,100].map(step => <button type="button" key={step} className={`step-btn ${progressValue === step ? 'active' : ''}`} onClick={() => setProgressValue(step)}>{step}%</button>)}</div><div className="modal-actions"><button className="secondary" type="button" onClick={() => setProgressProgram(null)}>Batal</button><button className="primary" type="button" onClick={saveProgress}>Simpan progress</button></div></div></Modal>}
@@ -494,23 +495,6 @@ function Login({ users, onLogin }) {
               ? 'Masuk untuk mengelola kinerja Kecamatan Kedungwaringin.'
               : 'Daftarkan akun staf/pejabat unit untuk mengakses SIPERAN.'}
           </p>
-        </div>
-
-        <div className="auth-tabs">
-          <button
-            type="button"
-            className={`auth-tab ${tab === 'signin' ? 'active' : ''}`}
-            onClick={() => { setTab('signin'); setError(''); }}
-          >
-            <LogIn size={16} /> Masuk (Sign In)
-          </button>
-          <button
-            type="button"
-            className={`auth-tab ${tab === 'signup' ? 'active' : ''}`}
-            onClick={() => { setTab('signup'); setError(''); }}
-          >
-            <UserPlus size={16} /> Daftar Baru (Sign Up)
-          </button>
         </div>
 
         {tab === 'signin' ? (

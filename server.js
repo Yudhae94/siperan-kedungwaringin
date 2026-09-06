@@ -547,9 +547,17 @@ app.delete('/api/admin-contacts/:id', auth, superAdminOnly, (req, res) => {
 app.get('/api/programs', auth, (req, res) => res.json(db.prepare('SELECT * FROM programs').all()))
 app.post('/api/programs', auth, write, (req, res) => {
   const b = req.body
+  if (!String(b.nama || '').trim()) return res.status(400).json({ error: 'Nama usulan kegiatan wajib diisi.' })
   const bidang = normalizeBidang(b.bidang)
+  let kode = String(b.kode || '').trim()
+  if (!kode) {
+    const maxNum = db.prepare("SELECT MAX(CAST(SUBSTR(kode, 5) AS INTEGER)) m FROM programs WHERE kode LIKE 'PRG-%'").get().m || 0
+    let candidate = maxNum + 1
+    while (db.prepare('SELECT 1 FROM programs WHERE kode = ?').get(`PRG-${String(candidate).padStart(3, '0')}`)) candidate += 1
+    kode = `PRG-${String(candidate).padStart(3, '0')}`
+  }
   const info = db.prepare("INSERT INTO programs (kode,nama,bidang,target,realisasi,pagu,status,penanggung,deadline) VALUES (?,?,?,?,0,?,?,?,?)").run(
-    b.kode || `PRG-${String(db.prepare('SELECT COUNT(*) c FROM programs').get().c + 1).padStart(3, '0')}`,
+    kode,
     b.nama,
     bidang,
     Number(b.target) || 0,
