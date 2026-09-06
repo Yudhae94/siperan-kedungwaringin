@@ -3,3 +3,10 @@ siperan.sqlite-shm
 siperan.sqlite-wal
 node_modules
 dist
+
+uploads/
+*.log
+dev-out.log
+dev-err.log
+server-out.log
+server-err.log

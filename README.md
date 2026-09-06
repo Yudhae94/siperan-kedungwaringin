@@ -32,6 +32,21 @@ C:\Users\Yudhaeka12\SIPERAN-KEDUNGWARINGIN\backup-project.bat
 
 File zip backup akan dibuat di folder `backup` di dalam project.
 
+## Branch GitHub
+
+Project ini sudah memiliki branch utama dan backup:
+
+- `master` → branch utama untuk versi aktif
+- `backup` → salinan aman / backup
+- `dev` → cabang pengembangan lanjutan
+
+Untuk berpindah ke branch pengembangan:
+
+```powershell
+cd C:\Users\Yudhaeka12\SIPERAN-KEDUNGWARINGIN
+git checkout dev
+```
+
 ## Membuka source code di VS Code
 
 Buka file `SIPERAN-KEDUNGWARINGIN.code-workspace` dengan VS Code, atau jalankan:
@@ -47,12 +62,16 @@ Source code utama berada di folder `src`, backend ada di `server.js`, dan databa
 - Dashboard ringkasan anggaran, progress, early warning, agenda, dan aktivitas.
 - CRUD program kerja (tambah program) dengan data seed realistis.
 - Pengendalian realisasi dan status otomatis selesai.
-- Upload dokumen lokal, status verifikasi, serta pusat unduhan.
+- Upload dokumen lokal yang benar-benar tersimpan di folder `uploads/`, status verifikasi, serta pusat unduhan.
 - Evaluasi kinerja, kepatuhan pelaporan, kalender agenda, dan ekspor berkas ringkas.
 - Mode peran Admin, PPTK/Kasi, dan Camat/Sekcam.
 - Login multi-peran User, Admin, dan Super Admin dengan pencatatan SIGN_IN/SIGN_OUT.
 - Hak akses: User hanya melihat data; Admin dapat tambah, edit, update, hapus, dan verifikasi; Super Admin memiliki akses penuh serta melihat manajemen pengguna.
 - Data disimpan di `siperan.sqlite`; tabel dibuat dan diisi otomatis saat server pertama kali berjalan.
+
+## Upload dokumen lokal
+
+Dokumen yang diunggah disimpan secara nyata di folder `uploads/` di dalam project agar dapat dibuka, dilihat, dan diunduh kembali dari aplikasi tanpa kehilangan data saat aplikasi dijalankan ulang.
 
 ## Akun demo
 
