@@ -138,3 +138,46 @@
 :root[data-theme='dark'] .callout button{background:#1b343c;color:#b8f3d6}
 :root[data-theme='dark'] .download-banner .secondary,
 :root[data-theme='dark'] .title-actions .secondary{background:#1b343c;color:#b8f3d6;border-color:#39615d}
+
+/* ===== Pengendalian & Realisasi Anggaran (LKA / SPJ) ===== */
+.spj-track-card{margin-bottom:16px}
+.spj-steps{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:10px}
+.spj-steps li{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);background:var(--panel-alt)}
+.spj-steps li b{color:var(--muted);font-weight:600}
+.spj-steps li.done{border-color:transparent;background:rgba(37,137,102,.1)}
+.spj-steps li.done b{color:var(--green)}
+.spj-steps li.current{border-color:var(--green);background:rgba(93,185,154,.12)}
+.spj-steps li.current b{color:var(--ink)}
+.spj-steps li .table-action{margin-left:auto}
+.spj-history{margin-top:16px;border-top:1px dashed var(--line);padding-top:12px;display:grid;gap:10px}
+.spj-history h3{margin:0;font-size:13px}
+.spj-history-item{display:flex;align-items:center;gap:12px}
+.spj-history-item small{display:block;color:var(--muted)}
+.table-actions-cell{white-space:nowrap;display:flex;gap:10px}
+tfoot td{font-weight:600;background:var(--panel-alt)}
+.empty-note{padding:22px;text-align:center}
+
+/* ===== Perbaikan tampilan LKA / SPJ ===== */
+td .progress{display:inline-block;vertical-align:middle;margin-right:6px}
+td small{display:block;color:var(--muted);margin-top:3px}
+.table-actions-cell{display:flex;gap:8px;align-items:center}
+.table-card td b{font-size:12px}
+.table-card td span:not(.status):not(.progress):not(.tag){font-size:11px;color:var(--ink)}
+.status.warn,.status.done,.status{font-size:9px}
+/* Langkah verifikasi SPJ */
+.spj-steps li{flex-wrap:wrap}
+.spj-steps li .table-action{font-size:10px}
+/* Kartu riwayat */
+.spj-history-item{flex-wrap:wrap}
+.spj-history-item div{flex:1;min-width:200px}
+.spj-history-item b{display:block;font-size:12px}
+/* LKA table lebih lega */
+.table-card table{min-width:900px}
+/* Progress bar di tabel SPJ agar terlihat jelas */
+.table-card td .progress{width:90px;height:7px}
+/* Detail kartu SPJ tracking */
+.spj-track-card .detail-top p{font-size:12px;color:var(--muted)}
+.spj-track-card .detail-top p b{color:var(--ink)}
+/* Badge jumlah di sidebar */
+.nav-group button em{margin-left:auto}
+.realtime-indicator{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid var(--line);border-radius:20px;font-size:10px;font-weight:700;color:var(--green);background:var(--panel-alt);white-space:nowrap}

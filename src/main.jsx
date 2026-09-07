@@ -6,7 +6,8 @@ import {
   CircleHelp, ClipboardCheck, CloudDownload, FileDown, FileText, FolderOpen,
   Gauge, LayoutDashboard, Menu, Moon, MoreHorizontal, Plus, Search, Settings2,
   ShieldCheck, Sun, Target, Upload, Users, X, Zap, LogIn, LogOut, LockKeyhole,
-  ClipboardList, FileUp, BadgeCheck, Archive, UserPlus, KeyRound, Trash2
+  ClipboardList, FileUp, BadgeCheck, Archive, UserPlus, KeyRound, Trash2, RotateCcw,
+  FileSpreadsheet, ClipboardPen, Route
 } from 'lucide-react'
 import './styles.css'
 
@@ -63,6 +64,9 @@ const navGroups = [
     { id: 'verifikasi-usulan', label: 'Verifikasi Usulan', icon: BadgeCheck, parent: 'Perencanaan' },
     { id: 'arsip', label: 'Arsip Renja & DPA', icon: FolderOpen, parent: 'Perencanaan' },
     { id: 'pengendalian', label: 'Pengendalian & Realisasi', icon: Activity },
+    { id: 'lka', label: 'Lembar Kendali Anggaran (LKA)', icon: FileSpreadsheet, parent: 'Pengendalian' },
+    { id: 'progres-spj', label: 'Input Progres Fisik & Keuangan', icon: ClipboardPen, parent: 'Pengendalian' },
+    { id: 'status-spj', label: 'Status Verifikasi SPJ', icon: Route, parent: 'Pengendalian' },
     { id: 'evaluasi', label: 'Evaluasi & Pelaporan', icon: BarChart3 },
   ]},
   { title: 'Layanan', items: [
@@ -139,6 +143,7 @@ function App() {
   const unitFilterOptions = ['Semua Unit', ...bidangOptions]
   const [modal, setModal] = useState(null)
   const [usulanRka, setUsulanRka] = useState([])
+  const [spjList, setSpjList] = useState([])
   const [progressProgram, setProgressProgram] = useState(null)
   const [progressValue, setProgressValue] = useState(0)
   const [toast, setToast] = useState('')
@@ -157,12 +162,19 @@ function App() {
   }, [])
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([api('/programs'), api('/docs'), api('/monthly-reports'), api('/events'), api('/log'), api('/users'), api('/admin-contacts'), api('/section-approvals'), api('/usulan-rka')]).then(([p,d,r,e,l,u,c,a,ur]) => { setPrograms(p); setDocs(d); setReports(r); setEvents(e); setAuthLog(l); setUsers(u); setAdminContacts(c.length ? c : defaultAdminContacts); setApprovalBoard(a.length ? a : defaultApprovalBoard); setUsulanRka(ur) }).catch(() => notify('Gagal memuat data server'))
+    Promise.all([api('/programs'), api('/docs'), api('/monthly-reports'), api('/events'), api('/log'), api('/users'), api('/admin-contacts'), api('/section-approvals'), api('/usulan-rka'), api('/spj')]).then(([p,d,r,e,l,u,c,a,ur,sp]) => { setPrograms(p); setDocs(d); setReports(r); setEvents(e); setAuthLog(l); setUsers(u); setAdminContacts(c.length ? c : defaultAdminContacts); setApprovalBoard(a.length ? a : defaultApprovalBoard); setUsulanRka(ur); setSpjList(sp) }).catch(() => notify('Gagal memuat data server'))
   }, [currentUser])
   useEffect(() => {
     if (!currentUser) return
-    const refreshEvents = () => api('/events').then(setEvents).catch(() => {})
-    const timer = setInterval(refreshEvents, 5000)
+    const refreshData = () => {
+      api('/events').then(setEvents).catch(() => {})
+      api('/programs').then(setPrograms).catch(() => {})
+      api('/spj').then(setSpjList).catch(() => {})
+      api('/docs').then(setDocs).catch(() => {})
+      api('/usulan-rka').then(setUsulanRka).catch(() => {})
+      api('/section-approvals').then(a => setApprovalBoard(a.length ? a : defaultApprovalBoard)).catch(() => {})
+    }
+    const timer = setInterval(refreshData, 5000)
     return () => clearInterval(timer)
   }, [currentUser])
 
@@ -344,6 +356,46 @@ function App() {
     if (!canWrite) return
     api(`/programs/${id}`, {method:'DELETE'}).then(() => { setPrograms(programs.filter(program => program.id !== id)); notify('Program berhasil dihapus') })
   }
+  function addSpj(e) {
+    e.preventDefault()
+    if (!canWrite) return
+    const f = new FormData(e.target)
+    fetch('/api/spj', { method: 'POST', credentials: 'include', body: f })
+      .then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Gagal menyimpan SPJ'); return r.json() })
+      .then(item => { setSpjList(list => [item, ...list]); setModal(null); notify('SPJ pencairan berhasil dicatat dan masuk tahap review') })
+      .catch(err => notify(err.message || 'Gagal menyimpan SPJ'))
+  }
+  function updateSpjProgress(e, spj) {
+    e.preventDefault()
+    if (!canWrite) return
+    const f = new FormData(e.target)
+    api(`/spj/${spj.id}`, { method: 'PATCH', body: JSON.stringify({
+      nilai_pencairan: Number(f.get('nilai_pencairan')) || 0,
+      progres_fisik: Number(f.get('progres_fisik')) || 0,
+      progres_keuangan: Number(f.get('progres_keuangan')) || 0,
+      catatan: f.get('catatan') || null
+    }) }).then(updated => {
+      setSpjList(list => list.map(item => item.id === updated.id ? updated : item))
+      setModal(null)
+      notify(`Progres ${spj.nama_kegiatan} diperbarui: fisik ${updated.progres_fisik}% · keuangan ${updated.progres_keuangan}%`)
+    }).catch(err => notify(err.message || 'Gagal memperbarui progres'))
+  }
+  function advanceSpjStatus(spj, nextStatus, catatan) {
+    if (!canWrite) return
+    api(`/spj/${spj.id}`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus, catatan_status: catatan }) })
+      .then(updated => {
+        setSpjList(list => list.map(item => item.id === updated.id ? updated : item))
+        notify(`Status SPJ diperbarui: ${nextStatus}`)
+      })
+      .catch(err => notify(err.message || 'Gagal memperbarui status SPJ'))
+  }
+  function deleteSpj(id) {
+    if (currentUser.role !== 'Super Admin') return
+    if (!window.confirm('Hapus catatan SPJ pencairan ini?')) return
+    api(`/spj/${id}`, { method: 'DELETE' })
+      .then(() => { setSpjList(list => list.filter(item => item.id !== id)); notify('Catatan SPJ berhasil dihapus') })
+      .catch(err => notify(err.message || 'Gagal menghapus SPJ'))
+  }
   function openProgressEditor(program) {
     setProgressProgram(program)
     setProgressValue(program.target ? Math.min(100, Math.round((program.realisasi / program.target) * 100)) : 0)
@@ -370,7 +422,7 @@ function App() {
       <div className="sidebar-bottom"><div className="help-card"><CircleHelp size={18}/><div><b>Butuh bantuan?</b><small>Silakan hubungi Admin SIPERAN Kedungwaringin</small>{(() => { const wa = adminContacts.find(c => c.type === 'whatsapp')?.value || '085771076965'; const waLink = `https://wa.me/${wa.replace(/\D/g, '').replace(/^0/, '62')}`; return <><a className="help-link" href={waLink} target="_blank" rel="noreferrer">Hubungi Admin</a>{currentUser.role === 'Super Admin' && <button type="button" className="help-link" onClick={() => setActive('pengaturan')}>Edit Nomor HP & Email</button>}</> })()}</div></div><div className="user-mini"><div className="avatar">{currentUser.name.slice(0, 2).toUpperCase()}</div><div><b>{currentUser.name}</b><small>{currentUser.role}</small></div><button className="logout-btn" title="Keluar" onClick={signOut}><LogOut size={16}/></button></div></div>
     </aside>
     <main className="main">
-      <header className="topbar"><button className="hamburger" onClick={() => setSidebar(true)}><Menu size={21}/></button><div className="breadcrumbs"><span>SIPERAN</span><b>/</b><strong>{navGroups.flatMap(g => g.items).find(i => i.id === active)?.label}</strong></div><div className="top-actions"><div className="role-select"><ShieldCheck size={16}/><span>{currentUser.role}</span></div><button className="theme-switch" onClick={() => setTheme(curr => curr === 'light' ? 'dark' : 'light')} aria-label="Ganti tema"><span className="theme-icon">{theme === 'light' ? <Moon size={16}/> : <Sun size={16}/>}</span><span>{theme === 'light' ? 'Mode gelap' : 'Mode terang'}</span></button><div className="notification-wrap"><button className="icon-btn notification" onClick={() => setNotificationsOpen(v => !v)} aria-label="Lihat notifikasi"><Bell size={19}/>{notificationCount > 0 && <span className="notification-badge">{notificationCount}</span>}</button>{notificationsOpen && <div className="notification-panel"><div className="notification-head"><b>Notifikasi</b><span>{notificationCount} perlu tindak lanjut</span></div>{notifications.map(item => <div className="notification-item" key={item.id}><div className="notification-copy"><b>{item.title}</b><small>{item.detail}</small></div><button className="secondary xs" onClick={() => { setActive(item.href); setNotificationsOpen(false) }}>{item.action}</button></div>)}</div>}</div><div className="top-avatar">{currentUser.name.slice(0, 2).toUpperCase()}</div></div></header>
+      <header className="topbar"><button className="hamburger" onClick={() => setSidebar(true)}><Menu size={21}/></button><div className="breadcrumbs"><span>SIPERAN</span><b>/</b><strong>{navGroups.flatMap(g => g.items).find(i => i.id === active)?.label}</strong></div><div className="top-actions"><div className="role-select"><ShieldCheck size={16}/><span>{currentUser.role}</span></div><span className="realtime-indicator" title="Data diperbarui otomatis setiap 5 detik"><span className="online-dot"/>Realtime</span><button className="theme-switch" onClick={() => setTheme(curr => curr === 'light' ? 'dark' : 'light')} aria-label="Ganti tema"><span className="theme-icon">{theme === 'light' ? <Moon size={16}/> : <Sun size={16}/>}</span><span>{theme === 'light' ? 'Mode gelap' : 'Mode terang'}</span></button><div className="notification-wrap"><button className="icon-btn notification" onClick={() => setNotificationsOpen(v => !v)} aria-label="Lihat notifikasi"><Bell size={19}/>{notificationCount > 0 && <span className="notification-badge">{notificationCount}</span>}</button>{notificationsOpen && <div className="notification-panel"><div className="notification-head"><b>Notifikasi</b><span>{notificationCount} perlu tindak lanjut</span></div>{notifications.map(item => <div className="notification-item" key={item.id}><div className="notification-copy"><b>{item.title}</b><small>{item.detail}</small></div><button className="secondary xs" onClick={() => { setActive(item.href); setNotificationsOpen(false) }}>{item.action}</button></div>)}</div>}</div><div className="top-avatar">{currentUser.name.slice(0, 2).toUpperCase()}</div></div></header>
       <div className="content">
         {active === 'dashboard' && <Dashboard programs={filtered} docs={docs} events={events} overall={overall} totalPagu={totalPagu} totalRealisasi={totalRealisasi} onNavigate={setActive} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} />}
         {active === 'kalender' && <CalendarPage events={events} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} onAdd={() => setModal('event')} onEdit={event => setModal({ type: 'edit-event', event })} onDelete={deleteEvent} />}
@@ -379,6 +431,9 @@ function App() {
         {active === 'upload-pendukung' && <UploadPendukungPage usulanRka={usulanRka} canWrite={canWrite} onUpload={id => setModal({ type: 'upload-pendukung', usulanId: id })} onDelete={deleteUsulan} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'verifikasi-usulan' && <VerifikasiUsulanPage usulanRka={usulanRka} isPerencanaan={isPerencanaan} onVerify={verifyUsulan} onDelete={deleteUsulan} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'pengendalian' && <Control programs={programs} setPrograms={setPrograms} onUpload={() => setModal('doc')} canWrite={canWrite} notify={notify} />}
+        {active === 'lka' && <LkaPage programs={programs} spjList={spjList} />}
+        {active === 'progres-spj' && <ProgresSpjPage spjList={spjList} programs={programs} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} onAdd={() => setModal('spj-add')} onUpdate={spj => setModal({ type: 'spj-progress', spj })} onDelete={deleteSpj} notify={notify} />}
+        {active === 'status-spj' && <StatusSpjPage spjList={spjList} canWrite={canWrite} onAdvance={advanceSpjStatus} notify={notify} />}
         {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('report')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'arsip' && <PlanningArchive docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
@@ -390,6 +445,8 @@ function App() {
     {modal?.type === 'upload-pendukung' && canWrite && <Modal title="Upload Dokumen Pendukung" onClose={() => setModal(null)}><form className="form-grid" onSubmit={e => uploadDokumenPendukung(e, modal.usulanId)}><label className="full">Jenis dokumen<select name="jenis_dokumen"><option>KAK</option><option>RAB</option><option>Jadwal Pelaksanaan</option></select></label><label className="upload-field full">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB per dokumen.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
     {progressProgram && canWrite && <Modal title={`Atur progress ${progressProgram.kode}`} onClose={() => setProgressProgram(null)}><div className="progress-editor"><p><b>{progressProgram.nama}</b></p><label>Progress saat ini: <strong>{progressValue}%</strong><input type="range" min="0" max="100" step="10" value={progressValue} onChange={e => setProgressValue(Number(e.target.value))}/></label><div className="step-grid">{[0,10,20,30,40,50,60,70,80,90,100].map(step => <button type="button" key={step} className={`step-btn ${progressValue === step ? 'active' : ''}`} onClick={() => setProgressValue(step)}>{step}%</button>)}</div><div className="modal-actions"><button className="secondary" type="button" onClick={() => setProgressProgram(null)}>Batal</button><button className="primary" type="button" onClick={saveProgress}>Simpan progress</button></div></div></Modal>}
     {modal === 'doc' && canWrite && <Modal title="Unggah dokumen" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addDoc}><label>Jenis dokumen<select name="type"><option>Renstra</option><option>Renja</option><option>DPA</option><option>RAK</option><option>Perencanaan</option><option>Pelaporan</option><option>Evaluasi</option><option>Lainnya</option></select></label><label className="upload-field">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
+    {modal === 'spj-add' && canWrite && <Modal title="Input Berkas SPJ Pencairan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addSpj}><label className="full">Kegiatan (dari E-Usulan)<select name="program_id" defaultValue=""><option value="">-- Tanpa mengaitkan kegiatan --</option>{programs.map(p => <option key={p.id} value={p.id}>{p.kode} · {p.nama}</option>)}</select></label><label className="full">Nama kegiatan / pencairan<input required name="nama_kegiatan" placeholder="Contoh: Pencairan DP Rehabilitasi Jalan" /></label><label>Pagu (Rp)<input name="pagu" type="number" min="0" placeholder="Otomatis dari kegiatan" /></label><label>Nilai pencairan (Rp)<input required name="nilai_pencairan" type="number" min="0" /></label><label>Progres fisik (%)<input name="progres_fisik" type="number" min="0" max="100" defaultValue={0} /></label><label>Progres keuangan (%)<input name="progres_keuangan" type="number" min="0" max="100" defaultValue={0} /></label><label>No. SPJ<input name="no_spj" placeholder="Contoh: 800/123/SPJ/2026" /></label><label>Tanggal SPJ<input name="tanggal_spj" type="date" /></label><label className="upload-field full">Berkas SPJ (opsional)<input name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Berkas SPJ / bukti pencairan. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Simpan SPJ</button></form></Modal>}
+    {modal?.type === 'spj-progress' && canWrite && <Modal title={`Update Progres: ${modal.spj.nama_kegiatan}`} onClose={() => setModal(null)}><form className="form-grid" onSubmit={e => updateSpjProgress(e, modal.spj)}><label>Nilai pencairan (Rp)<input name="nilai_pencairan" type="number" min="0" defaultValue={modal.spj.nilai_pencairan} /></label><label>Progres fisik (%)<input name="progres_fisik" type="number" min="0" max="100" defaultValue={modal.spj.progres_fisik} /></label><label>Progres keuangan (%)<input name="progres_keuangan" type="number" min="0" max="100" defaultValue={modal.spj.progres_keuangan} /></label><label className="full">Catatan PPTK<textarea name="catatan" rows={3} defaultValue={modal.spj.catatan || ''} /></label><div className="modal-actions"><button className="secondary" type="button" onClick={() => setModal(null)}>Batal</button><button className="primary" type="submit"><Check size={16}/> Simpan progres</button></div></form></Modal>}
     {modal === 'report' && canWrite && <Modal title="Unggah laporan triwulan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addDoc}><label>Periode laporan<select required name="periode"><option value="">Pilih periode</option><option>Triwulan I</option><option>Triwulan II</option><option>Triwulan III</option></select></label><label className="upload-field">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><input type="hidden" name="type" value="Pelaporan" /><p className="muted">Unggah laporan untuk periode Triwulan I, II, atau III. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah laporan</button></form></Modal>}
     {modal === 'event' && canWrite && <Modal title="Tambah kegiatan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addEvent}><label className="full">Nama kegiatan<input required name="title" placeholder="Contoh: Rapat koordinasi bulanan" /></label><label>Tanggal<input required name="date" type="date" /></label><label>Jenis kegiatan<select name="type"><option>Rapat</option><option>Deadline</option><option>Monitoring</option><option>Evaluasi</option><option>Lainnya</option></select></label><button className="primary full" type="submit"><Plus size={17}/> Simpan kegiatan</button></form></Modal>}
     {modal?.type === 'edit-event' && canWrite && <Modal title="Edit kegiatan agenda" onClose={() => setModal(null)}><form className="form-grid" onSubmit={updateEvent}><label className="full">Nama kegiatan<input required name="title" defaultValue={modal.event.title} /></label><label>Tanggal<input required name="date" type="date" defaultValue={modal.event.date} /></label><label>Jenis kegiatan<select name="type" defaultValue={modal.event.type}><option>Rapat</option><option>Deadline</option><option>Monitoring</option><option>Evaluasi</option><option>Lainnya</option></select></label><div className="modal-actions"><button className="secondary" type="button" onClick={() => setModal(null)}>Batal</button><button className="primary" type="submit"><Check size={16}/> Simpan perubahan</button></div></form></Modal>}
@@ -841,6 +898,68 @@ function ProgramTable({ programs, canWrite, onDelete, onProgress }) { return <di
 
 function Control({ programs, setPrograms, onUpload, canWrite, notify }) { const [selected, setSelected] = useState(programs[0]?.id); const current = programs.find(p => p.id === selected) || programs[0]; const currentPercent = current && current.target ? Math.min(100, Math.round((current.realisasi / current.target) * 100)) : 0; const usedBudget = current ? Math.min(current.pagu, Math.round((currentPercent / 100) * current.pagu)) : 0; const remainingBudget = current ? Math.max(0, current.pagu - usedBudget) : 0; const updatePercent = (nextPercent) => { if (!canWrite || !current) return; const nextRealisasi = Math.round((nextPercent / 100) * current.target); const nextStatus = nextRealisasi >= current.target ? 'Selesai' : nextPercent >= 75 ? 'Berjalan' : 'Perlu perhatian'; const n = { ...current, realisasi: nextRealisasi, status: nextStatus }; api(`/programs/${current.id}`,{method:'PATCH',body:JSON.stringify(n)}).then(() => { setPrograms(programs.map(p => p.id === current.id ? n : p)); notify(`Realisasi diatur menjadi ${nextPercent}%`) }) }; return <><PageTitle eyebrow="Siklus kinerja · Monitoring berkala" title="Pengendalian & Realisasi">{canWrite && <Button secondary onClick={onUpload}><Upload size={17}/> Unggah bukti realisasi</Button>}</PageTitle><div className="control-layout"><section className="card program-list"><div className="card-head"><div><h2>Pilih program</h2><p>Perbarui capaian fisik secara berkala</p></div></div>{programs.map(p => <button key={p.id} className={`program-option ${selected === p.id ? 'selected' : ''}`} onClick={() => setSelected(p.id)}><div><b>{p.kode}</b><span>{p.nama}</span></div><strong>{pct(p.realisasi, p.target)}%</strong></button>)}</section><section className="card detail-card">{current && <><div className="detail-top"><div><span className="eyebrow">{current.kode} · {current.bidang}</span><h2>{current.nama}</h2><p>Penanggung jawab: {current.penanggung}</p></div><span className={`status ${current.status === 'Perlu perhatian' ? 'warn' : current.status === 'Selesai' ? 'done' : ''}`}>{current.status}</span></div><div className="big-progress"><div className="big-progress-head"><span>Realisasi indikator</span><b>{pct(current.realisasi, current.target)}%</b></div><div className="progress"><i style={{width: `${pct(current.realisasi, current.target)}%`}}/></div><div className="metric-row"><div><small>Realisasi fisik</small><b>{current.realisasi} <em>/ {current.target} target</em></b></div><div><small>Pagu anggaran</small><b>{rupiah(current.pagu)}</b></div><div><small>Batas waktu</small><b>{new Date(current.deadline).toLocaleDateString('id-ID', {day:'numeric', month:'long'})}</b></div></div><div className="budget-summary"><div><small>Pagu terpakai</small><b>{rupiah(usedBudget)}</b><span>{currentPercent}% dari pagu</span></div><div><small>Sisa pagu</small><b>{rupiah(remainingBudget)}</b><span>{100 - currentPercent}% belum terpakai</span></div></div></div><div className="update-box"><h3>Input realisasi terbaru</h3><p>{canWrite ? 'Pilih tingkat capaian dari 10% sampai 100% untuk melihat progres secara jelas.' : 'Mode baca saja: Anda tidak memiliki izin mengubah realisasi.'}</p>{canWrite && <><div className="step-grid">{[0,10,20,30,40,50,60,70,80,90,100].map(step => <button key={step} className={`step-btn ${currentPercent === step ? 'active' : ''}`} onClick={() => updatePercent(step)}>{step}%</button>)}</div><div className="slider-wrap"><label>Capaian saat ini: <strong>{currentPercent}%</strong></label><input type="range" min="0" max="100" step="10" value={currentPercent} onChange={e => updatePercent(Number(e.target.value))} /></div><div className="quick-actions"><button className="secondary" onClick={() => notify('Bukti realisasi siap diunggah')}>Lampirkan bukti</button></div></>}</div></>}</section></div></> }
 
+const SPJ_STAGES = ['Review Subag Perencanaan & Keuangan', 'Penandatanganan Camat / Sekcam', 'Tahap Pencairan', 'Selesai Dicairkan']
+const spjStageClass = s => s === 'Selesai Dicairkan' ? 'done' : s === 'Tahap Pencairan' ? '' : 'warn'
+
+function LkaPage({ programs, spjList }) {
+  const rows = programs.map(p => {
+    const spj = spjList.filter(s => s.program_id === p.id)
+    const cair = spj.reduce((t, s) => t + Number(s.nilai_pencairan || 0), 0)
+    return { kode: p.kode, nama: p.nama, bidang: p.bidang, pagu: Number(p.pagu || 0), cair, sisa: Math.max(0, Number(p.pagu || 0) - cair), fisik: pct(p.realisasi, p.target), status: p.status, spjCount: spj.length }
+  })
+  const totalPagu = rows.reduce((t, r) => t + r.pagu, 0)
+  const totalCair = rows.reduce((t, r) => t + r.cair, 0)
+  const exportLka = () => makeLkaPdf(rows, { totalPagu, totalCair })
+  return <><PageTitle eyebrow="Pengendalian & Realisasi Anggaran · Rekapitulasi" title="Lembar Kendali Anggaran (LKA)"><Button secondary onClick={exportLka}><FileDown size={17}/> Ekspor PDF</Button></PageTitle>
+    <div className="stat-grid"><Stat label="Total pagu" value={rupiah(totalPagu)} note={`${rows.length} kegiatan terdaftar`} icon={FileSpreadsheet} /><Stat label="Total realisasi pencairan" value={rupiah(totalCair)} note={totalPagu ? `${Math.round((totalCair / totalPagu) * 100)}% dari pagu` : '-'} icon={Activity} tone="blue" /><Stat label="Sisa anggaran" value={rupiah(Math.max(0, totalPagu - totalCair))} note="Belum dicairkan" icon={Target} tone="orange" /><Stat label="Berkas SPJ" value={spjList.length} note={`${spjList.filter(s => s.status === 'Selesai Dicairkan').length} selesai dicairkan`} icon={ClipboardList} tone="purple" /></div>
+    <section className="card table-card"><div className="card-head"><div><h2>Rekapitulasi per rekening belanja / kegiatan</h2><p>Pagu, realisasi pencairan, dan sisa anggaran per kegiatan</p></div><FileSpreadsheet className="muted-icon" /></div>
+      {rows.length ? <div className="table-scroll"><table><thead><tr><th>Kode / Kegiatan</th><th>Bidang</th><th>Pagu</th><th>Realisasi Pencairan</th><th>Sisa Anggaran</th><th>% Serap</th><th>Progres Fisik</th><th>Berkas SPJ</th><th>Status</th></tr></thead><tbody>{rows.map(r => <tr key={r.kode}>
+        <td><b>{r.kode}</b><span>{r.nama}</span></td><td>{r.bidang}</td><td>{rupiah(r.pagu)}</td><td>{rupiah(r.cair)}</td><td>{rupiah(r.sisa)}</td>
+        <td><b>{r.pagu ? Math.round((r.cair / r.pagu) * 100) : 0}%</b></td>
+        <td><span className="progress"><i style={{ width: `${Math.min(100, r.fisik)}%` }} /></span></td>
+        <td>{r.spjCount} berkas</td>
+        <td><span className={`status ${r.status === 'Selesai' ? 'done' : r.status === 'Perlu perhatian' ? 'warn' : ''}`}>{r.status}</span></td>
+      </tr>)}</tbody><tfoot><tr><td colSpan={2}><b>TOTAL</b></td><td><b>{rupiah(totalPagu)}</b></td><td><b>{rupiah(totalCair)}</b></td><td><b>{rupiah(Math.max(0, totalPagu - totalCair))}</b></td><td colSpan={4} /></tr></tfoot></table></div>
+      : <p className="muted empty-note">Belum ada kegiatan. Tambahkan E-Usulan Kegiatan terlebih dahulu.</p>}
+    </section></>
+}
+
+function ProgresSpjPage({ spjList, programs, canWrite, isSuperAdmin, onAdd, onUpdate, onDelete, notify }) {
+  return <><PageTitle eyebrow="Pengendalian & Realisasi Anggaran · PPTK" title="Input Progres Fisik & Keuangan">{canWrite && <Button onClick={onAdd}><Plus size={17}/> Input SPJ Pencairan</Button>}</PageTitle>
+    <div className="callout"><div className="callout-icon"><ClipboardPen size={19} /></div><div><b>Perbarui berkas SPJ dan capaian fisik kegiatan</b><p>PPTK dapat mencatat berkas pencairan (SPJ) beserta persentase progres fisik dan keuangan setiap kegiatan.</p></div></div>
+    <section className="card table-card"><div className="card-head"><div><h2>Daftar SPJ & progres</h2><p>{spjList.length} catatan pencairan</p></div><ClipboardPen className="muted-icon" /></div>
+      {spjList.length ? <div className="table-scroll"><table><thead><tr><th>Kegiatan</th><th>No. SPJ / Tanggal</th><th>Nilai Pencairan</th><th>Progres Fisik</th><th>Progres Keuangan</th><th>Status</th><th>Berkas</th>{canWrite && <th>Aksi</th>}</tr></thead><tbody>{spjList.map(s => <tr key={s.id}>
+        <td><b>{s.kode_kegiatan || '—'}</b><span>{s.nama_kegiatan}</span></td>
+        <td>{s.no_spj || '—'}{s.tanggal_spj && <small>{new Date(`${s.tanggal_spj}T00:00:00`).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</small>}</td>
+        <td>{rupiah(s.nilai_pencairan)}</td>
+        <td><span className="progress"><i style={{ width: `${Math.min(100, s.progres_fisik)}%` }} /></span><small>{s.progres_fisik}%</small></td>
+        <td><span className="progress"><i style={{ width: `${Math.min(100, s.progres_keuangan)}%` }} /></span><small>{s.progres_keuangan}%</small></td>
+        <td><span className={`status ${spjStageClass(s.status)}`}>{s.status}</span></td>
+        <td>{s.file_path ? <a href={s.file_path} target="_blank" rel="noreferrer">{s.file_name}</a> : <small className="muted">Tidak ada</small>}</td>
+        {canWrite && <td className="table-actions-cell"><button className="table-action" onClick={() => onUpdate(s)}>Update</button>{isSuperAdmin && <button className="table-action danger" onClick={() => onDelete(s.id)}>Hapus</button>}</td>}
+      </tr>)}</tbody></table></div>
+      : <p className="muted empty-note">Belum ada catatan SPJ. Klik "Input SPJ Pencairan" untuk menambahkan.</p>}
+    </section></>
+}
+
+function StatusSpjPage({ spjList, canWrite, onAdvance, notify }) {
+  const [filter, setFilter] = useState('Semua')
+  const filtered = filter === 'Semua' ? spjList : spjList.filter(s => s.status === filter)
+  const countBy = stage => spjList.filter(s => s.status === stage).length
+  return <><PageTitle eyebrow="Pengendalian & Realisasi Anggaran · Pelacakan" title="Status Verifikasi SPJ">
+    <label className="filter-select-wrap"><span>Tahap</span><select value={filter} onChange={e => setFilter(e.target.value)}><option>Semua</option>{SPJ_STAGES.map(s => <option key={s}>{s}</option>)}</select></label></PageTitle>
+    <div className="stat-grid"><Stat label="Review Subag Perencanaan & Keuangan" value={countBy(SPJ_STAGES[0])} note="Dokumen sedang direview" icon={ClipboardList} tone="blue" /><Stat label="Penandatanganan Camat / Sekcam" value={countBy(SPJ_STAGES[1])} note="Menunggu tanda tangan" icon={ClipboardPen} tone="orange" /><Stat label="Tahap Pencairan" value={countBy(SPJ_STAGES[2])} note="Diproses bendahara" icon={Activity} tone="purple" /><Stat label="Selesai Dicairkan" value={countBy(SPJ_STAGES[3])} note="Dana telah diterima" icon={Check} /></div>
+    {filtered.length ? filtered.map(s => <section className="card spj-track-card" key={s.id}>
+      <div className="detail-top"><div><span className="eyebrow">{s.kode_kegiatan || 'SPJ'}</span><h2>{s.nama_kegiatan}</h2><p>Nilai pencairan: <b>{rupiah(s.nilai_pencairan)}</b>{s.no_spj && ` · No. SPJ: ${s.no_spj}`}</p></div><span className={`status ${spjStageClass(s.status)}`}>{s.status}</span></div>
+      <ol className="spj-steps">{SPJ_STAGES.map((stage, i) => {
+        const currentIdx = SPJ_STAGES.indexOf(s.status)
+        const state = i < currentIdx ? 'done' : i === currentIdx ? 'current' : ''
+        return <li key={stage} className={state}><b>{stage}</b>{i === currentIdx && canWrite && i < SPJ_STAGES.length - 1 && <button className="table-action" onClick={() => onAdvance(s, SPJ_STAGES[i + 1])}>Lanjut ke tahap berikutnya →</button>}</li>
+      })}</ol>
+      {s.riwayat && s.riwayat.length > 0 && <div className="spj-history"><h3>Riwayat</h3>{s.riwayat.map(h => <div className="spj-history-item" key={h.id}><span className={`status ${h.status === 'Selesai Dicairkan' ? 'done' : 'warn'}`}>{h.status}</span><div><b>{h.catatan || 'Perubahan status'}</b><small>{h.oleh || 'Sistem'} · {new Date(h.at).toLocaleString('id-ID')}</small></div></div>)}</div>}
+    </section>) : <p className="muted empty-note">Tidak ada SPJ pada tahap ini.</p>}</>
+}
+
 function Evaluation({ programs, docs, approvalBoard, onUpload, onVerify, onDelete, onApprove, canWrite, isSuperAdmin }) {
   const [selectedDoc, setSelectedDoc] = useState(null)
 
@@ -872,6 +991,53 @@ function Evaluation({ programs, docs, approvalBoard, onUpload, onVerify, onDelet
     <section className="card table-card"><div className="card-head"><div><h2>Dokumen pelaporan</h2><p>Kelola dokumen dan status verifikasi</p></div><FileText className="muted-icon"/></div><div className="table-scroll"><table><thead><tr><th>Nama dokumen</th><th>Jenis</th><th>Ukuran</th><th>Tanggal</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{docs.map(d => <tr key={d.id}><td><div className="file-name"><div className="file-icon"><FileText size={16}/></div><b>{d.name}</b></div></td><td>{d.type}</td><td>{d.size}</td><td>{d.date}</td><td><span className={`status ${d.status === 'Terverifikasi' ? 'done' : 'warn'}`}>{d.status}</span></td><td><div className="row-actions">{canWrite && d.status !== 'Terverifikasi' && <button className="table-action" onClick={() => onVerify(d.id)}><Check size={15}/> Verifikasi</button>}<button className="secondary xs" type="button" onClick={() => setSelectedDoc(d)}>Lihat</button><button className="secondary xs" type="button" onClick={() => downloadDoc(d)}><FileDown size={15}/> Unduh</button>{isSuperAdmin && <button className="table-action danger" type="button" onClick={() => onDelete(d.id)}>Hapus</button>}</div></td></tr>)}</tbody></table></div></section>
     {selectedDoc && <Modal title="Preview dokumen" onClose={() => setSelectedDoc(null)}><div className="doc-preview"><div className="preview-badge">{selectedDoc.status}</div><h3>{selectedDoc.name}</h3><div className="doc-meta"><span><b>Jenis:</b> {selectedDoc.type}</span><span><b>Ukuran:</b> {selectedDoc.size}</span><span><b>Tanggal:</b> {selectedDoc.date}</span></div><p>{selectedDoc.preview || 'Dokumen ini sedang dipantau dalam proses evaluasi dan pelaporan. Silakan tinjau kelengkapan, kesesuaian data, dan status verifikasi sebelum ditutup atau disetujui.'}</p>{(selectedDoc.review_log || []).length > 0 && <div className="review-log"><h4>Riwayat review</h4>{(selectedDoc.review_log || []).map(log => <div className="log-entry" key={log.id}><b>{log.action}</b><small>{log.reviewer} · {new Date(log.at).toLocaleString('id-ID')}</small><p>{log.notes}</p></div>)}</div>}<div className="review-actions modal-actions"><button className="secondary" type="button" onClick={() => setSelectedDoc(null)}>Tutup</button><button className="secondary" type="button" onClick={() => downloadDoc(selectedDoc)}>Unduh file</button>{canWrite && selectedDoc.status !== 'Terverifikasi' && <button className="primary" type="button" onClick={() => { onVerify(selectedDoc.id); setSelectedDoc(null) }}><Check size={15}/> Review dokumen</button>}</div></div></Modal>}
   </>
+}
+
+function makeLkaPdf(rows, totals) {
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13)
+  pdf.text('LEMBAR KENDALI ANGGARAN (LKA)', pageWidth / 2, 14, { align: 'center' })
+  pdf.setFontSize(10); pdf.setFont('helvetica', 'normal')
+  pdf.text('Kecamatan Kedungwaringin · Pengendalian & Realisasi Anggaran', pageWidth / 2, 20, { align: 'center' })
+  pdf.text(`Dicetak: ${formatDate(new Date())}`, pageWidth / 2, 25, { align: 'center' })
+  const headers = ['Kode', 'Kegiatan', 'Pagu', 'Pencairan', 'Sisa', '% Serap', 'Fisik', 'SPJ']
+  const widths = [20, 82, 34, 34, 34, 16, 16, 14]
+  const startX = 10
+  let y = 34
+  const drawHead = () => {
+    pdf.setFillColor(13, 107, 88); pdf.setTextColor(255)
+    let x = startX
+    pdf.rect(startX, y - 5, widths.reduce((a, b) => a + b, 0), 7, 'F')
+    pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+    headers.forEach((h, i) => { pdf.text(h, x + 2, y); x += widths[i] })
+    y += 7
+  }
+  drawHead()
+  pdf.setTextColor(40); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8)
+  const fmt = n => 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(n || 0))
+  rows.forEach((r, idx) => {
+    if (y > 195) { pdf.addPage(); y = 20; drawHead(); pdf.setTextColor(40); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8) }
+    if (idx % 2 === 1) { pdf.setFillColor(240, 247, 244); pdf.rect(startX, y - 4.5, widths.reduce((a, b) => a + b, 0), 6, 'F') }
+    let x = startX
+    const cells = [r.kode, r.nama, fmt(r.pagu), fmt(r.cair), fmt(r.sisa), `${r.pagu ? Math.round((r.cair / r.pagu) * 100) : 0}%`, `${r.fisik}%`, `${r.spjCount}`]
+    cells.forEach((c, i) => {
+      const text = pdf.splitTextToSize(String(c), widths[i] - 4)
+      pdf.text(text[0], x + 2, y)
+      x += widths[i]
+    })
+    pdf.setDrawColor(210)
+    pdf.line(startX, y + 2, startX + widths.reduce((a, b) => a + b, 0), y + 2)
+    y += 6
+  })
+  if (y > 190) { pdf.addPage(); y = 20 }
+  y += 4
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9)
+  pdf.text('TOTAL', startX + 2, y)
+  pdf.text(fmt(totals.totalPagu), startX + widths[0] + widths[1] + 2, y)
+  pdf.text(fmt(totals.totalCair), startX + widths[0] + widths[1] + widths[2] + 2, y)
+  pdf.text(fmt(Math.max(0, totals.totalPagu - totals.totalCair)), startX + widths[0] + widths[1] + widths[2] + widths[3] + 2, y)
+  pdf.save(`LKA-Kecamatan-Kedungwaringin-${new Date().toISOString().slice(0, 10)}.pdf`)
 }
 
 function makePdfDownload(name, lines) {

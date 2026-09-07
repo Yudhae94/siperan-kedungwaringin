@@ -289,6 +289,38 @@ const seed = () => {
   }
 }
 
+db.exec(`CREATE TABLE IF NOT EXISTS spj_pencairan (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  program_id INTEGER,
+  kode_kegiatan TEXT,
+  nama_kegiatan TEXT NOT NULL,
+  pagu REAL NOT NULL DEFAULT 0,
+  nilai_pencairan REAL NOT NULL DEFAULT 0,
+  progres_fisik REAL NOT NULL DEFAULT 0,
+  progres_keuangan REAL NOT NULL DEFAULT 0,
+  no_spj TEXT,
+  tanggal_spj TEXT,
+  status TEXT NOT NULL DEFAULT 'Review Subag Perencanaan & Keuangan',
+  catatan TEXT,
+  file_name TEXT,
+  file_path TEXT,
+  mime_type TEXT,
+  storage_name TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(program_id) REFERENCES programs(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS spj_riwayat (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  spj_id INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  catatan TEXT,
+  oleh TEXT,
+  at TEXT NOT NULL,
+  FOREIGN KEY(spj_id) REFERENCES spj_pencairan(id) ON DELETE CASCADE
+);`)
+
 seed()
 
 const app = express()
@@ -302,7 +334,7 @@ app.use(session({
 
 const auth = (req, res, next) => req.session.user ? next() : res.status(401).json({ error: 'Unauthorized' })
 const write = (req, res, next) => req.session.user && req.session.user.role !== 'User' ? next() : res.status(403).json({ error: 'Read-only' })
-const superAdminOnly = (req, res, next) => req.session.user && req.session.user.role === 'Super Admin' ? next() : res.status(403).json({ error: 'Hanya Super Admin yang dapat mengubah kontak admin.' })
+const superAdminOnly = (req, res, next) => req.session.user && req.session.user.role === 'Super Admin' ? next() : res.status(403).json({ error: 'Aksi ini hanya dapat dilakukan oleh Super Admin.' })
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -870,6 +902,91 @@ app.delete('/api/usulan-rka/:id', auth, superAdminOnly, (req, res) => {
       }
     })
   db.prepare('DELETE FROM usulan_rka WHERE id = ?').run(usulan.id)
+  res.json({ ok: true })
+})
+
+// ===== SPJ / Pencairan (Pengendalian & Realisasi Anggaran) =====
+const SPJ_STAGES = ['Review Subag Perencanaan & Keuangan', 'Penandatanganan Camat / Sekcam', 'Tahap Pencairan', 'Selesai Dicairkan']
+
+app.get('/api/spj', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM spj_pencairan ORDER BY id DESC').all()
+  const history = db.prepare('SELECT * FROM spj_riwayat ORDER BY id DESC').all()
+  res.json(rows.map(r => ({ ...r, riwayat: history.filter(h => h.spj_id === r.id) })))
+})
+
+app.post('/api/spj', auth, write, upload.single('file'), (req, res) => {
+  const b = req.body || {}
+  const now = new Date().toISOString()
+  const file = req.file
+  const namaKegiatan = String(b.nama_kegiatan || '').trim()
+  if (!namaKegiatan) {
+    if (file) { const p = path.join(uploadsDir, file.filename); if (fs.existsSync(p)) fs.unlinkSync(p) }
+    return res.status(400).json({ error: 'Nama kegiatan wajib diisi.' })
+  }
+  const program = b.program_id ? db.prepare('SELECT * FROM programs WHERE id=?').get(b.program_id) : null
+  const info = db.prepare(`INSERT INTO spj_pencairan
+    (program_id,kode_kegiatan,nama_kegiatan,pagu,nilai_pencairan,progres_fisik,progres_keuangan,no_spj,tanggal_spj,status,catatan,file_name,file_path,mime_type,storage_name,created_by,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    program ? program.id : null,
+    b.kode_kegiatan || (program ? program.kode : null),
+    namaKegiatan,
+    Number(b.pagu) || (program ? program.pagu : 0),
+    Number(b.nilai_pencairan) || 0,
+    Number(b.progres_fisik) || 0,
+    Number(b.progres_keuangan) || 0,
+    b.no_spj || null,
+    b.tanggal_spj || null,
+    SPJ_STAGES[0],
+    b.catatan || null,
+    file ? file.originalname : null,
+    file ? `/api/uploads/${file.filename}` : null,
+    file ? file.mimetype : null,
+    file ? file.filename : null,
+    req.session.user.name,
+    now, now
+  )
+  const spjId = info.lastInsertRowid
+  db.prepare('INSERT INTO spj_riwayat (spj_id,status,catatan,oleh,at) VALUES (?,?,?,?,?)')
+    .run(spjId, SPJ_STAGES[0], 'SPJ dibuat dan masuk review Subag Perencanaan & Keuangan', req.session.user.name, now)
+  const row = db.prepare('SELECT * FROM spj_pencairan WHERE id=?').get(spjId)
+  res.json({ ...row, riwayat: db.prepare('SELECT * FROM spj_riwayat WHERE spj_id=? ORDER BY id DESC').all(spjId) })
+})
+
+app.patch('/api/spj/:id', auth, write, (req, res) => {
+  const row = db.prepare('SELECT * FROM spj_pencairan WHERE id=?').get(req.params.id)
+  if (!row) return res.status(404).json({ error: 'Data SPJ tidak ditemukan.' })
+  const b = req.body || {}
+  const now = new Date().toISOString()
+  const num = (val, fallback) => {
+    const n = Number(val)
+    return Number.isFinite(n) ? n : fallback
+  }
+  const next = {
+    nilai_pencairan: b.nilai_pencairan !== undefined ? Math.max(0, num(b.nilai_pencairan, row.nilai_pencairan)) : row.nilai_pencairan,
+    progres_fisik: b.progres_fisik !== undefined ? Math.max(0, Math.min(100, num(b.progres_fisik, row.progres_fisik))) : row.progres_fisik,
+    progres_keuangan: b.progres_keuangan !== undefined ? Math.max(0, Math.min(100, num(b.progres_keuangan, row.progres_keuangan))) : row.progres_keuangan,
+    catatan: b.catatan !== undefined ? (b.catatan === null ? null : String(b.catatan)) : row.catatan,
+    status: SPJ_STAGES.includes(b.status) ? b.status : row.status
+  }
+  db.prepare('UPDATE spj_pencairan SET nilai_pencairan=?, progres_fisik=?, progres_keuangan=?, catatan=?, status=?, updated_at=? WHERE id=?')
+    .run(next.nilai_pencairan, next.progres_fisik, next.progres_keuangan, next.catatan, next.status, now, row.id)
+  if (next.status !== row.status) {
+    db.prepare('INSERT INTO spj_riwayat (spj_id,status,catatan,oleh,at) VALUES (?,?,?,?,?)')
+      .run(row.id, next.status, b.catatan_status || `Status diperbarui menjadi: ${next.status}`, req.session.user.name, now)
+  }
+  const updated = db.prepare('SELECT * FROM spj_pencairan WHERE id=?').get(row.id)
+  res.json({ ...updated, riwayat: db.prepare('SELECT * FROM spj_riwayat WHERE spj_id=? ORDER BY id DESC').all(row.id) })
+})
+
+app.delete('/api/spj/:id', auth, superAdminOnly, (req, res) => {
+  const row = db.prepare('SELECT * FROM spj_pencairan WHERE id=?').get(req.params.id)
+  if (!row) return res.status(404).json({ error: 'Data SPJ tidak ditemukan.' })
+  if (row.storage_name) {
+    const storedPath = path.join(uploadsDir, path.basename(row.storage_name))
+    if (fs.existsSync(storedPath)) fs.unlinkSync(storedPath)
+  }
+  db.prepare('DELETE FROM spj_riwayat WHERE spj_id=?').run(row.id)
+  db.prepare('DELETE FROM spj_pencairan WHERE id=?').run(row.id)
   res.json({ ok: true })
 })
 
