@@ -59,3 +59,111 @@ export function makeRkaTemplatePdf() {
   drawRow(['', '', '', '', '', 'Jumlah Anggaran Sub Kegiatan', 'Rp.'], 10, true)
   pdf.save('Template-RKA-Manual-Kedungwaringin.pdf')
 }
+
+// ===== Konversi & hitung otomatis =====
+export const parseNumber = value => {
+  if (value === null || value === undefined) return 0
+  const s = String(value).trim()
+  if (!s) return 0
+  // "1.234.567" (titik=ribuan) atau "1234.5" (titik=desimal) atau "1,234.5"
+  if (/^\d{1,3}(\.\d{3})+$/.test(s)) return parseFloat(s.replace(/\./g, ''))
+  return parseFloat(s.replace(/\./g, '').replace(/,/g, '.')) || 0
+}
+
+export const formatRupiah = value => 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(parseNumber(value) || 0))
+
+// Hitung jumlah otomatis: koefisien × harga (ditambah PPN % jika diisi)
+export const hitungJumlah = row => {
+  const koef = parseNumber(row.koefisien)
+  const harga = parseNumber(row.harga)
+  const ppn = parseNumber(row.ppn)
+  let jumlah = koef * harga
+  if (ppn > 0 && ppn < 100) jumlah += jumlah * (ppn / 100)
+  return jumlah
+}
+
+// Tandai baris header/akun (tanpa perhitungan) vs baris rincian belanja
+export const isAccountRow = row => !parseNumber(row.koefisien) && !parseNumber(row.harga)
+
+// Ekspor PDF sesuai template formulir RKA MANUAL - RINCIAN BELANJA SKPD
+export function exportRkaFormPdf({ title, tahun, satuan, formulir, rows, total }) {
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const left = 8
+  const tableWidth = pageWidth - left * 2
+  const widths = [30, 92, 22, 24, 26, 16, tableWidth - 30 - 92 - 22 - 24 - 26 - 16]
+  const headers = ['Kode Rekening', 'Uraian', 'Koefisien', 'Satuan', 'Harga', 'PPN', 'Jumlah']
+  const fmt = v => formatRupiah(v).replace('Rp ', '')
+  let y = 12
+
+  const drawHead = () => {
+    pdf.setFillColor(255); pdf.setTextColor(0)
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11)
+    pdf.rect(left, y, 130, 12); pdf.rect(left + 130, y, tableWidth - 130, 12)
+    pdf.text('RENCANA KERJA DAN ANGGARAN SATUAN KERJA', left + 65, y + 5, { align: 'center' })
+    pdf.text('PERANGKAT DAERAH MANUAL', left + 65, y + 10, { align: 'center' })
+    pdf.text('Formulir', left + 130 + (tableWidth - 130) / 2, y + 5, { align: 'center' })
+    pdf.text('RKA MANUAL - RINCIAN BELANJA SKPD', left + 130 + (tableWidth - 130) / 2, y + 10, { align: 'center' })
+    y += 12
+    pdf.setFontSize(9); pdf.setFont('helvetica', 'normal')
+    pdf.rect(left, y, tableWidth, 7)
+    pdf.text(`Pemerintah Kabupaten Bekasi Tahun Anggaran ${tahun || '2025'}`, left + tableWidth / 2, y + 5, { align: 'center' })
+    y += 7
+    pdf.rect(left, y, tableWidth, 11)
+    pdf.text('Rincian Anggaran Belanja Kegiatan', left + tableWidth / 2, y + 5, { align: 'center' })
+    pdf.text('Satuan Kerja Perangkat Daerah', left + tableWidth / 2, y + 9, { align: 'center' })
+    y += 11
+    // Header tabel dua tingkat
+    pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+    pdf.rect(left, y, widths[0], 12); pdf.rect(left + widths[0], y, widths[1], 12)
+    pdf.rect(left + widths[0] + widths[1], y, widths[2] + widths[3] + widths[4] + widths[5], 6)
+    pdf.rect(left + widths[0] + widths[1], y + 6, widths[2], 6); pdf.rect(left + widths[0] + widths[1] + widths[2], y + 6, widths[3], 6)
+    pdf.rect(left + widths[0] + widths[1] + widths[2] + widths[3], y + 6, widths[4], 6); pdf.rect(left + widths[0] + widths[1] + widths[2] + widths[3] + widths[4], y + 6, widths[5], 6)
+    pdf.rect(left + widths[0] + widths[1] + widths[2] + widths[3] + widths[4] + widths[5], y, widths[6], 12)
+    pdf.text('Kode Rekening', left + widths[0] / 2, y + 7.5, { align: 'center' })
+    pdf.text('Uraian', left + widths[0] + widths[1] / 2, y + 7.5, { align: 'center' })
+    const rx = left + widths[0] + widths[1]
+    pdf.text('Rincian Perhitungan', rx + (widths[2] + widths[3] + widths[4] + widths[5]) / 2, y + 4.5, { align: 'center' })
+    pdf.text('Koefisien', rx + widths[2] / 2, y + 10.5, { align: 'center' })
+    pdf.text('Satuan', rx + widths[2] + widths[3] / 2, y + 10.5, { align: 'center' })
+    pdf.text('Harga', rx + widths[2] + widths[3] + widths[4] / 2, y + 10.5, { align: 'center' })
+    pdf.text('PPN', rx + widths[2] + widths[3] + widths[4] + widths[5] / 2, y + 10.5, { align: 'center' })
+    pdf.text('Jumlah', left + widths[0] + widths[1] + widths[2] + widths[3] + widths[4] + widths[5] + widths[6] / 2, y + 7.5, { align: 'center' })
+    y += 12
+  }
+
+  drawHead()
+  pdf.setTextColor(0)
+  const detailRows = rows.filter(r => !(isAccountRow(r) && !String(r.uraian || '').trim()))
+  detailRows.forEach(row => {
+    const isDetail = !isAccountRow(row)
+    const uraianLines = pdf.splitTextToSize(String(row.uraian || ''), widths[1] - 4)
+    const extra = []
+    if (String(row.kode || '').trim() === '[#]') extra.push('Sumber Dana : PENDAPATAN ASLI DAERAH (PAD)')
+    if (row.satuan && !String(row.kode || '').includes('[') && !isAccountRow(row)) extra.push(`Satuan: ${row.satuan}`)
+    const blockLines = [...uraianLines, ...extra]
+    const rowHeight = Math.max(7, blockLines.length * 4.5 + 3)
+    if (y + rowHeight > pageHeight - 14) { pdf.addPage(); y = 12; drawHead() }
+    let x = left
+    const bold = isAccountRow(row) && !String(row.kode || '').includes('[')
+    pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(8)
+    const cells = [String(row.kode || ''), '', isDetail ? String(row.koefisien || '') : '', isDetail ? String(row.satuan || '') : '', isDetail ? (parseNumber(row.harga) ? fmt(row.harga) : '') : '', isDetail && parseNumber(row.ppn) ? `${row.ppn}%` : '', isDetail && parseNumber(row.jumlah) ? fmt(row.jumlah) : 'Rp.']
+    cells.forEach((cell, i) => { pdf.rect(x, y, widths[i], rowHeight); x += widths[i] })
+    pdf.text(String(cells[0]), left + 2, y + 5)
+    blockLines.forEach((line, li) => pdf.text(String(line), left + widths[0] + 2, y + 5 + li * 4.5))
+    const rx2 = left + widths[0] + widths[1]
+    if (cells[2]) pdf.text(cells[2], rx2 + widths[2] / 2, y + 5, { align: 'center' })
+    if (cells[3]) pdf.text(cells[3], rx2 + widths[2] + widths[3] / 2, y + 5, { align: 'center' })
+    if (cells[4]) pdf.text(cells[4], rx2 + widths[2] + widths[3] + widths[4] - 2, y + 5, { align: 'right' })
+    if (cells[5]) pdf.text(cells[5], rx2 + widths[2] + widths[3] + widths[4] + widths[5] / 2, y + 5, { align: 'center' })
+    if (cells[6]) pdf.text(cells[6], rx2 + widths[2] + widths[3] + widths[4] + widths[5] + widths[6] - 2, y + 5, { align: 'right' })
+    y += rowHeight
+  })
+  if (y + 10 > pageHeight - 14) { pdf.addPage(); y = 12; drawHead() }
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8.5)
+  pdf.rect(left, y, tableWidth - widths[6], 9); pdf.rect(left + tableWidth - widths[6], y, widths[6], 9)
+  pdf.text('Jumlah Anggaran Sub Kegiatan :', left + tableWidth - widths[6] - 3, y + 6, { align: 'right' })
+  pdf.text(`Rp. ${fmt(total)}`, left + tableWidth - 3, y + 6, { align: 'right' })
+  pdf.save(`RKA-${(satuan || 'Kedungwaringin').replace(/\s+/g, '-')}-TA${tahun || '2025'}.pdf`)
+}

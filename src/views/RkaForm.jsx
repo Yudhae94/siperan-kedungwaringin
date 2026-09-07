@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { api } from '../services/api'
-import { makePdfDownload } from '../utils/pdf'
+import { makePdfDownload, exportRkaFormPdf, hitungJumlah, parseNumber, isAccountRow } from '../utils/pdf'
+
+const fmt = value => new Intl.NumberFormat('id-ID').format(parseNumber(value) || 0)
 
 function RkaForm() {
   const defaultRows = [
@@ -38,10 +40,19 @@ function RkaForm() {
   }, [])
 
   const updateRow = (index, field, value) => {
-    setRows(prev => prev.map((row, i) => i === index ? { ...row, [field]: value } : row))
+    setRows(prev => prev.map((row, i) => {
+      if (i !== index) return row
+      const next = { ...row, [field]: value }
+      // Hitung otomatis: jumlah = koefisien × harga (+ PPN % bila diisi)
+      if (field === 'koefisien' || field === 'harga' || field === 'ppn') {
+        next.jumlah = hitungJumlah(next) ? fmt(hitungJumlah(next)) : ''
+      }
+      return next
+    }))
   }
 
-  const total = rows.reduce((sum, row) => sum + (Number(row.jumlah) || 0), 0)
+  // Total = penjumlahan seluruh baris rincian (baris akun/header diabaikan)
+  const total = rows.reduce((sum, row) => isAccountRow(row) ? sum : sum + (parseNumber(row.jumlah) || 0), 0)
 
   const saveRka = () => {
     setSaving(true)
@@ -59,24 +70,14 @@ function RkaForm() {
   }
 
   const exportRkaPdf = () => {
-    const lines = [
-      'SIPERAN KEDUNGWARINGIN',
-      'Rencana Kerja dan Anggaran',
-      'Tahun: 2025',
-      'Satuan: Kecamatan Kedungwaringin',
-      'Formulir: RKA MANUAL - RINCIAN BELANJA SKPD',
-      '',
-      'Detail RKA:'
-    ]
-
-    rows.forEach((row, idx) => {
-      const label = row.uraian || `Baris ${idx + 1}`
-      const amount = Number(row.jumlah) || 0
-      lines.push(`${row.kode || '-'} | ${label} | Rp ${new Intl.NumberFormat('id-ID').format(amount)}`)
+    exportRkaFormPdf({
+      title: 'Rencana Kerja dan Anggaran',
+      tahun: '2025',
+      satuan: 'Kecamatan Kedungwaringin',
+      formulir: 'RKA MANUAL - RINCIAN BELANJA SKPD',
+      rows,
+      total
     })
-
-    lines.push('', `Total Anggaran: Rp ${new Intl.NumberFormat('id-ID').format(total)}`)
-    makePdfDownload('RKA-Kedungwaringin', lines)
   }
 
   return <section className="card rka-card">
@@ -113,17 +114,25 @@ function RkaForm() {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
+          {rows.map((row, index) => {
+            const detail = !isAccountRow(row)
+            const autoJumlah = hitungJumlah(row)
+            return (
             <tr key={row.id || `rka-row-${index}`}>
               <td><input value={row.kode} onChange={e => updateRow(index, 'kode', e.target.value)} /></td>
               <td><input value={row.uraian} onChange={e => updateRow(index, 'uraian', e.target.value)} /></td>
-              <td><input value={row.koefisien} onChange={e => updateRow(index, 'koefisien', e.target.value)} /></td>
-              <td><input value={row.satuan} onChange={e => updateRow(index, 'satuan', e.target.value)} /></td>
-              <td><input value={row.harga} onChange={e => updateRow(index, 'harga', e.target.value)} /></td>
-              <td><input value={row.ppn} onChange={e => updateRow(index, 'ppn', e.target.value)} /></td>
-              <td><input value={row.jumlah} onChange={e => updateRow(index, 'jumlah', e.target.value)} /></td>
+              <td><input value={row.koefisien} onChange={e => updateRow(index, 'koefisien', e.target.value)} placeholder={detail ? 'mis. 10' : ''} /></td>
+              <td><input value={row.satuan} onChange={e => updateRow(index, 'satuan', e.target.value)} placeholder={detail ? 'mis. Orang / Kali' : ''} /></td>
+              <td><input value={row.harga} onChange={e => updateRow(index, 'harga', e.target.value)} placeholder={detail ? 'mis. 100.000' : ''} /></td>
+              <td><input value={row.ppn} onChange={e => updateRow(index, 'ppn', e.target.value)} placeholder={detail ? '%' : ''} /></td>
+              <td>
+                {detail && autoJumlah
+                  ? <input value={fmt(autoJumlah)} readOnly className="rka-readonly" title="Otomatis: Koefisien × Harga" />
+                  : <input value={row.jumlah} onChange={e => updateRow(index, 'jumlah', e.target.value)} />}
+              </td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
         <tfoot>
           <tr>

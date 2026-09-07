@@ -181,3 +181,5 @@ td small{display:block;color:var(--muted);margin-top:3px}
 /* Badge jumlah di sidebar */
 .nav-group button em{margin-left:auto}
 .realtime-indicator{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid var(--line);border-radius:20px;font-size:10px;font-weight:700;color:var(--green);background:var(--panel-alt);white-space:nowrap}
+
+.rka-readonly{background:#eef6f3;font-weight:700;color:#0d6b58}
