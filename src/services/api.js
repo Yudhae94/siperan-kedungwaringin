@@ -1,0 +1,1 @@
+export const api = (url, options = {}) => fetch(`/api${url}`, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options }).then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Permintaan gagal'); return r.status === 204 ? null : r.json() })

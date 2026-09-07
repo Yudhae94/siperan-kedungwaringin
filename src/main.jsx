@@ -1,4 +1,3 @@
-import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { jsPDF } from 'jspdf'
 import {
@@ -1459,12 +1458,3 @@ globalRoot.render(
     <App />
   </ErrorBoundary>
 )
-
-
-
-
-
-
-
-
-
