@@ -72,6 +72,7 @@ const navGroups = [
   { title: 'Layanan', items: [
     { id: 'kalender', label: 'Kalender Kegiatan', icon: CalendarDays },
     { id: 'unduhan', label: 'Pusat Unduhan', icon: CloudDownload },
+    { id: 'klinik', label: 'Klinik Perencanaan', icon: CircleHelp },
     { id: 'pengaturan', label: 'Pengaturan & Bantuan', icon: Settings2 },
   ]},
 ]
@@ -436,6 +437,7 @@ function App() {
         {active === 'status-spj' && <StatusSpjPage spjList={spjList} canWrite={canWrite} onAdvance={advanceSpjStatus} notify={notify} />}
         {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('report')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
+        {active === 'klinik' && <ClinicPage currentUser={currentUser} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} notify={notify} />}
         {active === 'arsip' && <PlanningArchive docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'pengaturan' && <Settings notify={notify} currentUser={currentUser} users={users} setUsers={setUsers} authLog={authLog} adminContacts={adminContacts} setAdminContacts={setAdminContacts} />}
       </div>
@@ -706,10 +708,10 @@ function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canW
 
   return <><PageTitle eyebrow="Siklus kinerja · Tahun Anggaran 2026" title="Perencanaan (E-Usulan Kegiatan)"><div className="title-actions-inline">{canWrite && <Button onClick={onAdd}><Plus size={17}/> E-Usulan Kegiatan</Button>}<button className="secondary" type="button" onClick={() => setShowRkaForm(v => !v)}>{showRkaForm ? 'Tutup form RKA' : 'Input RKA'}</button><label className="filter-select-wrap"><span>Unit</span><select value={currentUnit} onChange={e => onUnitFilterChange(e.target.value)}>{unitFilterOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label></div></PageTitle>
     <div className="planning-subnav">
-      <button type="button" className="primary" onClick={() => onNavigate('usulan-rka')}><ClipboardList size={16}/> Usulan RKA / KAK</button>
-      <button type="button" className="primary" onClick={() => onNavigate('upload-pendukung')}><FileUp size={16}/> Upload Dokumen Pendukung</button>
-      <button type="button" className="primary" onClick={() => onNavigate('verifikasi-usulan')}><BadgeCheck size={16}/> Verifikasi Usulan</button>
-      <button type="button" className="primary" onClick={() => onNavigate('arsip')}><FolderOpen size={16}/> Arsip Renja & DPA</button>
+      <button type="button" className="subnav-btn primary" onClick={() => onNavigate('usulan-rka')}><ClipboardList size={16}/> Usulan RKA / KAK</button>
+      <button type="button" className="subnav-btn primary" onClick={() => onNavigate('upload-pendukung')}><FileUp size={16}/> Upload Dokumen Pendukung</button>
+      <button type="button" className="subnav-btn primary" onClick={() => onNavigate('verifikasi-usulan')}><BadgeCheck size={16}/> Verifikasi Usulan</button>
+      <button type="button" className="subnav-btn primary" onClick={() => onNavigate('arsip')}><FolderOpen size={16}/> Arsip Renja & DPA</button>
     </div>
     <div className="callout"><div className="callout-icon"><Zap size={19}/></div><div><b>Rencana kerja tahun 2026 sedang berjalan</b><p>Lengkapi indikator dan pagu untuk menjaga konsistensi antara rencana dan realisasi.</p></div><button onClick={() => onNavigate('pengendalian')}>Buka pengendalian →</button></div>{showRkaForm && <RkaForm />}<section className="card table-card"><div className="table-toolbar"><div><h2>Daftar E-Usulan Kegiatan</h2><p>{programs.length} usulan kegiatan terdaftar</p></div><div className="search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari usulan kegiatan..." /></div></div><ProgramTable programs={programs} canWrite={canWrite} onDelete={onDelete} onProgress={onProgress}/></section></> }
 

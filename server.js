@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import crypto from 'node:crypto'
 import { registerEvaluation } from './server/evaluation.js'
+import { registerClinic } from './server/clinic.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
@@ -519,7 +520,7 @@ app.patch('/api/users/:id', auth, superAdminOnly, (req, res) => {
   if (!target) return res.status(404).json({ error: 'Pengguna tidak ditemukan.' })
 
   const { name, role, status, bidang, email } = req.body || {}
-  const validRoles = ['User', 'Admin', 'Super Admin']
+  const validRoles = ['User', 'Admin', 'Super Admin', 'PPTK', 'Camat', 'Sekcam']
   const validStatuses = ['Aktif', 'Nonaktif']
 
   if (role && !validRoles.includes(role)) {
@@ -598,6 +599,8 @@ app.delete('/api/admin-contacts/:id', auth, superAdminOnly, (req, res) => {
   if (!deleted.changes) return res.status(404).json({ error: 'Kontak tidak ditemukan.' })
   res.json({ ok: true })
 })
+
+registerClinic(app, db, auth, write, superAdminOnly, uploadsDir)
 
 app.get('/api/programs', auth, (req, res) => res.json(db.prepare('SELECT * FROM programs').all()))
 app.post('/api/programs', auth, write, (req, res) => {

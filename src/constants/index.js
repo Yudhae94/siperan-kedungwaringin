@@ -1,4 +1,4 @@
-import { Activity, BadgeCheck, BarChart3, CalendarDays, ClipboardList, CloudDownload, FileUp, FolderOpen, LayoutDashboard, Settings2, Target, Upload } from 'lucide-react'
+import { Activity, BadgeCheck, BarChart3, CalendarDays, CircleHelp, ClipboardList, CloudDownload, FileUp, FolderOpen, LayoutDashboard, Settings2, Target, Upload } from 'lucide-react'
 
 export const bidangOptions = [
   'Sekretariat - Bagian Umum dan Kepegawaian',
@@ -36,6 +36,7 @@ export const navGroups = [
   { title: 'Layanan', items: [
     { id: 'kalender', label: 'Kalender Kegiatan', icon: CalendarDays },
     { id: 'unduhan', label: 'Pusat Unduhan', icon: CloudDownload },
+    { id: 'klinik', label: 'Klinik Perencanaan', icon: CircleHelp },
     { id: 'pengaturan', label: 'Pengaturan & Bantuan', icon: Settings2 },
   ]},
 ]

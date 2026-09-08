@@ -8,6 +8,7 @@ import { bidangOptions, defaultAdminContacts, defaultApprovalBoard } from '../co
 import { api } from '../services/api'
 import { createDocPreview, formatFileSize, pct } from '../utils/format'
 import CalendarPage from '../views/CalendarPage'
+import ClinicPage from '../views/ClinicPage'
 import Control from '../views/Control'
 import Dashboard from '../views/Dashboard'
 import Downloads from '../views/Downloads'
@@ -274,6 +275,7 @@ function App() {
         {active === 'pengendalian' && <Control programs={programs} setPrograms={setPrograms} onUpload={() => setModal('doc')} canWrite={canWrite} notify={notify} />}
         {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('report')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} bidangOptions={bidangOptions} notify={notify} />}
         {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
+        {active === 'klinik' && <ClinicPage currentUser={currentUser} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} notify={notify} />}
         {active === 'arsip' && <PlanningArchive docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'pengaturan' && <Settings notify={notify} currentUser={currentUser} users={users} setUsers={setUsers} authLog={authLog} adminContacts={adminContacts} setAdminContacts={setAdminContacts} />}
       </div>
