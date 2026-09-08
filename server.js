@@ -6,12 +6,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import crypto from 'node:crypto'
+import { registerEvaluation } from './server/evaluation.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
 fs.mkdirSync(uploadsDir, { recursive: true })
 
-const db = new DatabaseSync(path.join(__dirname, 'siperan.sqlite'))
+const db = new DatabaseSync(process.env.SIPERAN_DB || path.join(__dirname, 'siperan.sqlite'))
 db.exec('PRAGMA journal_mode = WAL')
 db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS programs (id INTEGER PRIMARY KEY, kode TEXT UNIQUE NOT NULL, nama TEXT NOT NULL, bidang TEXT, target REAL NOT NULL, realisasi REAL NOT NULL DEFAULT 0, pagu REAL NOT NULL DEFAULT 0, status TEXT NOT NULL, penanggung TEXT, deadline TEXT);
@@ -997,6 +998,8 @@ app.get('/api/uploads/:filename', auth, (req, res) => {
   res.sendFile(filePath)
 })
 
+registerEvaluation(app, db, auth, write)
+app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan.' }))
 app.use(express.static(path.join(__dirname, 'dist')))
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')))
 
@@ -1018,8 +1021,8 @@ const getAvailablePort = async (startPort) => {
   })
 }
 
-const requestedPort = Number(process.env.PORT || 3000)
-const port = await getAvailablePort(requestedPort)
+const requestedPort = Number(process.env.PORT || 3001)
+const port = requestedPort
 // Handler error (termasuk penolakan tipe berkas dari multer)
 app.use((err, _req, res, _next) => {
   if (err instanceof multer.MulterError) {
