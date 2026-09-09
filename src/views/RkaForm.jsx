@@ -5,7 +5,7 @@ import { Trash2, Eraser, Download, Save, Pencil } from 'lucide-react'
 
 const fmt = value => new Intl.NumberFormat('id-ID').format(parseNumber(value) || 0)
 
-function RkaForm() {
+function RkaForm({ isSuperAdmin }) {
   const defaultRows = [
     { kode: '5', uraian: 'BELANJA DAERAH', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '', keterangan: '' },
     { kode: '5.1', uraian: 'BELANJA OPERASI', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '', keterangan: '' },
@@ -171,7 +171,7 @@ function RkaForm() {
               <td><input value={row.keterangan} onChange={e => updateRow(index, 'keterangan', e.target.value)} placeholder="Keterangan" /></td>
               <td className="rka-row-actions">
                 <button type="button" className="icon-btn" title="Kosongkan baris ini" onClick={() => clearRow(index)}><Eraser size={15}/></button>
-                <button type="button" className="table-action danger" title="Hapus baris ini" onClick={() => deleteRow(index)}><Trash2 size={15}/> Hapus</button>
+                {isSuperAdmin && <button type="button" className="table-action danger" title="Hapus baris ini" onClick={() => deleteRow(index)}><Trash2 size={15}/> Hapus</button>}
               </td>
             </tr>
             )

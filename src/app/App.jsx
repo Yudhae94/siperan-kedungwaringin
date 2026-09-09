@@ -268,7 +268,8 @@ function App() {
       .catch(err => notify(err.message || 'Gagal menghapus dokumen'))
   }
   function removeProgram(id) {
-    if (!canWrite) return
+    if (!isSuperAdmin) return
+    if (!window.confirm('Hapus program ini?')) return
     api(`/programs/${id}`, {method:'DELETE'}).then(() => { setPrograms(programs.filter(program => program.id !== id)); notify('Program berhasil dihapus') })
   }
   function openProgressEditor(program) {
@@ -295,16 +296,16 @@ function App() {
       <Navbar setSidebar={setSidebar} active={active} setActive={setActive} currentUser={currentUser} theme={theme} setTheme={setTheme} notificationsOpen={notificationsOpen} setNotificationsOpen={setNotificationsOpen} notificationCount={notificationCount} notifications={notifications} />
       <div className="content">
         {active === 'dashboard' && <Dashboard programs={filtered} docs={docs} events={events} overall={overall} totalPagu={totalPagu} totalRealisasi={totalRealisasi} onNavigate={setActive} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} />}
-        {active === 'kalender' && <CalendarPage events={events} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} onAdd={() => setModal('event')} onEdit={event => setModal({ type: 'edit-event', event })} onDelete={deleteEvent} />}
-        {active === 'perencanaan' && <Planning programs={filtered} query={query} setQuery={setQuery} onAdd={() => setModal('program')} onDelete={removeProgram} onProgress={openProgressEditor} canWrite={canWrite} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
+        {active === 'kalender' && <CalendarPage events={events} canWrite={canWrite} isSuperAdmin={isSuperAdmin} onAdd={() => setModal('event')} onEdit={event => setModal({ type: 'edit-event', event })} onDelete={deleteEvent} />}
+        {active === 'perencanaan' && <Planning programs={filtered} query={query} setQuery={setQuery} onAdd={() => setModal('program')} onDelete={removeProgram} onProgress={openProgressEditor} canWrite={canWrite} isSuperAdmin={isSuperAdmin} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
         {active === 'usulan-rka' && <UsulanRkaPage usulanRka={usulanRka} canWrite={canWrite} onAdd={() => setModal('usulan-rka')} onUpload={id => setModal({ type: 'upload-pendukung', usulanId: id })} onVerify={verifyUsulan} onDelete={deleteUsulan} isPerencanaan={isSuperAdmin} isSuperAdmin={isSuperAdmin} />}
         {active === 'upload-pendukung' && <UploadPendukungPage usulanRka={usulanRka} canWrite={canWrite} onUpload={id => setModal({ type: 'upload-pendukung', usulanId: id })} onDelete={deleteUsulan} isSuperAdmin={isSuperAdmin} onEditDoc={setEditDoc} onDeleteDoc={deleteDokumenPendukung} />}
         {active === 'verifikasi-usulan' && <VerifikasiUsulanPage usulanRka={usulanRka} isPerencanaan={isSuperAdmin} onVerify={verifyUsulan} onDelete={deleteUsulan} isSuperAdmin={isSuperAdmin} />}
         {active === 'pengendalian' && <Control programs={programs} setPrograms={setPrograms} onUpload={() => setModal('doc')} canWrite={canWrite} notify={notify} spjList={spjList} setSpjList={setSpjList} lkaData={lkaData} setLkaData={setLkaData} kartuList={kartuList} setKartuList={setKartuList} dpaList={dpaList} setDpaList={setDpaList} usulanRka={usulanRka} isSuperAdmin={isSuperAdmin} />}
-        {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('report')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} bidangOptions={bidangOptions} notify={notify} />}
-        {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
-        {active === 'klinik' && <ClinicPage currentUser={currentUser} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} notify={notify} />}
-        {active === 'arsip' && <PlanningArchive docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
+        {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('report')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={isSuperAdmin} bidangOptions={bidangOptions} notify={notify} />}
+        {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={isSuperAdmin} />}
+        {active === 'klinik' && <ClinicPage currentUser={currentUser} canWrite={canWrite} isSuperAdmin={isSuperAdmin} notify={notify} />}
+        {active === 'arsip' && <PlanningArchive docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={isSuperAdmin} />}
         {active === 'pengaturan' && <Settings notify={notify} currentUser={currentUser} users={users} setUsers={setUsers} authLog={authLog} adminContacts={adminContacts} setAdminContacts={setAdminContacts} />}
       </div>
     </main>

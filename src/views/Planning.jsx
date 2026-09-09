@@ -4,7 +4,7 @@ import PageTitle from '../components/PageTitle'
 import ProgramTable from '../components/ProgramTable'
 import RkaForm from './RkaForm'
 
-function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canWrite, currentUnit, onUnitFilterChange, unitFilterOptions, onNavigate }) {
+function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canWrite, isSuperAdmin, currentUnit, onUnitFilterChange, unitFilterOptions, onNavigate }) {
   const [showRkaForm, setShowRkaForm] = useState(false)
 
   return (
@@ -38,7 +38,7 @@ function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canW
         <button onClick={() => onNavigate('pengendalian')}>Buka pengendalian →</button>
       </div>
 
-      {showRkaForm && <RkaForm />}
+      {showRkaForm && <RkaForm isSuperAdmin={isSuperAdmin} />}
 
       <section className="card table-card">
         <div className="table-toolbar">
@@ -51,7 +51,7 @@ function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canW
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari usulan kegiatan..." />
           </div>
         </div>
-        <ProgramTable programs={programs} canWrite={canWrite} onDelete={onDelete} onProgress={onProgress}/>
+        <ProgramTable programs={programs} canWrite={canWrite} isSuperAdmin={isSuperAdmin} onDelete={onDelete} onProgress={onProgress}/>
       </section>
     </>
   )
