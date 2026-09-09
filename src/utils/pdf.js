@@ -65,7 +65,7 @@ export function makeRkaTemplatePdf() {
 }
 
 // ===== Ekspor PDF dari data input RKA (sesuai tampilan layar) =====
-export function exportRkaFormPdf({ title, tahun, satuan, formulir, rows, total }) {
+export function exportRkaFormPdf({ title, tahun, satuan, formulir, jabatan, nama_ttd, nip_ttd, rows, total }) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const pageWidth = doc.internal.pageSize.getWidth()
 
@@ -158,13 +158,20 @@ export function exportRkaFormPdf({ title, tahun, satuan, formulir, rows, total }
   doc.setFontSize(10)
   doc.text(`JUMLAH ANGGARAN SUB KEGIATAN: Rp. ${new Intl.NumberFormat('id-ID').format(Math.round(total || 0))}`, pageWidth - 12, finalY, { align: 'right' })
 
-  // Tanda tangan
+  // Tanda tangan (menggunakan data yang dapat di-edit)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.text('Mengetahui,', pageWidth - 80, finalY + 12)
-  doc.text('Kepala Bagian Perencanaan & Keuangan', pageWidth - 80, finalY + 17)
-  doc.text('_________________________', pageWidth - 80, finalY + 30)
-  doc.text('NIP. ___________________', pageWidth - 80, finalY + 35)
+  doc.text(jabatan || 'Kepala Bagian Perencanaan & Keuangan', pageWidth - 80, finalY + 17)
+  if (nama_ttd) {
+    doc.setFont('helvetica', 'bold')
+    doc.text(nama_ttd, pageWidth - 80, finalY + 30)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`NIP. ${nip_ttd || '___________________'}`, pageWidth - 80, finalY + 35)
+  } else {
+    doc.text('_________________________', pageWidth - 80, finalY + 30)
+    doc.text('NIP. ___________________', pageWidth - 80, finalY + 35)
+  }
 
   // Simpan
   doc.save(`RKA-Kedungwaringin-TA${tahun || '2025'}.pdf`)

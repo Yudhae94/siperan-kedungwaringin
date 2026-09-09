@@ -664,28 +664,37 @@ app.delete('/api/programs/:id', auth, write, (req, res) => {
 })
 
 app.get('/api/rka', auth, (req, res) => {
+  try { db.exec('ALTER TABLE rka_forms ADD COLUMN jabatan TEXT') } catch { /* kolom sudah ada */ }
+  try { db.exec('ALTER TABLE rka_forms ADD COLUMN nama_ttd TEXT') } catch { /* kolom sudah ada */ }
+  try { db.exec('ALTER TABLE rka_forms ADD COLUMN nip_ttd TEXT') } catch { /* kolom sudah ada */ }
   const form = db.prepare('SELECT * FROM rka_forms ORDER BY id DESC LIMIT 1').get()
-  if (!form) return res.json({ id: null, title: 'Rencana Kerja dan Anggaran', tahun: '2025', satuan: 'Kecamatan Kedungwaringin', formulir: 'RKA MANUAL - RINCIAN BELANJA SKPD', rows: [] })
+  if (!form) return res.json({ id: null, title: 'Rencana Kerja dan Anggaran', tahun: '2025', satuan: 'Kecamatan Kedungwaringin', formulir: 'RKA MANUAL - RINCIAN BELANJA SKPD', jabatan: 'Kepala Bagian Perencanaan & Keuangan', nama_ttd: '', nip_ttd: '', rows: [] })
   const rows = db.prepare('SELECT * FROM rka_rows WHERE rka_id = ? ORDER BY id').all(form.id)
   res.json({ ...form, rows })
 })
 
 app.post('/api/rka', auth, write, (req, res) => {
-  const { id, title, tahun, satuan, formulir, rows = [] } = req.body || {}
+  try { db.exec('ALTER TABLE rka_forms ADD COLUMN jabatan TEXT') } catch { /* kolom sudah ada */ }
+  try { db.exec('ALTER TABLE rka_forms ADD COLUMN nama_ttd TEXT') } catch { /* kolom sudah ada */ }
+  try { db.exec('ALTER TABLE rka_forms ADD COLUMN nip_ttd TEXT') } catch { /* kolom sudah ada */ }
+  const { id, title, tahun, satuan, formulir, jabatan, nama_ttd, nip_ttd, rows = [] } = req.body || {}
   const payload = {
     title: title || 'Rencana Kerja dan Anggaran',
     tahun: tahun || '2025',
     satuan: satuan || 'Kecamatan Kedungwaringin',
     formulir: formulir || 'RKA MANUAL - RINCIAN BELANJA SKPD',
+    jabatan: jabatan || 'Kepala Bagian Perencanaan & Keuangan',
+    nama_ttd: nama_ttd || '',
+    nip_ttd: nip_ttd || '',
     total: rows.reduce((sum, row) => sum + (Number(row.jumlah) || 0), 0),
     updated_at: new Date().toISOString()
   }
 
   let formId = id
   if (formId) {
-    db.prepare('UPDATE rka_forms SET title=?, tahun=?, satuan=?, formulir=?, total=?, updated_at=? WHERE id=?').run(payload.title, payload.tahun, payload.satuan, payload.formulir, payload.total, payload.updated_at, formId)
+    db.prepare('UPDATE rka_forms SET title=?, tahun=?, satuan=?, formulir=?, jabatan=?, nama_ttd=?, nip_ttd=?, total=?, updated_at=? WHERE id=?').run(payload.title, payload.tahun, payload.satuan, payload.formulir, payload.jabatan, payload.nama_ttd, payload.nip_ttd, payload.total, payload.updated_at, formId)
   } else {
-    const insert = db.prepare('INSERT INTO rka_forms (title,tahun,satuan,formulir,total,updated_at) VALUES (?,?,?,?,?,?)').run(payload.title, payload.tahun, payload.satuan, payload.formulir, payload.total, payload.updated_at)
+    const insert = db.prepare('INSERT INTO rka_forms (title,tahun,satuan,formulir,jabatan,nama_ttd,nip_ttd,total,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(payload.title, payload.tahun, payload.satuan, payload.formulir, payload.jabatan, payload.nama_ttd, payload.nip_ttd, payload.total, payload.updated_at)
     formId = insert.lastInsertRowid
   }
 

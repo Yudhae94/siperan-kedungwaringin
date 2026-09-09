@@ -33,12 +33,20 @@ function RkaForm({ isSuperAdmin, canWrite }) {
   const [headerFormulir, setHeaderFormulir] = useState('RKA MANUAL - RINCIAN BELANJA SKPD')
   const [satuan, setSatuan] = useState('Kecamatan Kedungwaringin')
 
+  // Tanda tangan editable state
+  const [jabatan, setJabatan] = useState('Kepala Bagian Perencanaan & Keuangan')
+  const [namaTtd, setNamaTtd] = useState('')
+  const [nipTtd, setNipTtd] = useState('')
+
   useEffect(() => {
     api('/rka').then(data => {
       if (data.tahun) setTahun(String(data.tahun))
       if (data.satuan) setSatuan(data.satuan)
       if (data.title) setHeaderTitle(data.title)
       if (data.formulir) setHeaderFormulir(data.formulir)
+      if (data.jabatan) setJabatan(data.jabatan)
+      if (data.nama_ttd) setNamaTtd(data.nama_ttd)
+      if (data.nip_ttd) setNipTtd(data.nip_ttd)
       if (Array.isArray(data.rows) && data.rows.length) {
         setRows(data.rows.map(row => ({
           id: row.id,
@@ -97,6 +105,9 @@ function RkaForm({ isSuperAdmin, canWrite }) {
       tahun,
       satuan,
       formulir: headerFormulir,
+      jabatan,
+      nama_ttd: namaTtd,
+      nip_ttd: nipTtd,
       rows: computedRows
     }) }).then(data => {
       setSavedData(data)
@@ -112,6 +123,9 @@ function RkaForm({ isSuperAdmin, canWrite }) {
       tahun,
       satuan,
       formulir: headerFormulir,
+      jabatan,
+      nama_ttd: namaTtd,
+      nip_ttd: nipTtd,
       rows: computedRows,
       total
     })
@@ -224,6 +238,35 @@ function RkaForm({ isSuperAdmin, canWrite }) {
           </tr>
         </tfoot>
       </table>
+    </div>
+
+    <div className="card signature-card">
+      <div className="card-head">
+        <div>
+          <h2>Tanda Tangan Penanggung Jawab</h2>
+          <p>Data pejabat yang menandatangani dokumen RKA (tampil pada export PDF)</p>
+        </div>
+      </div>
+      <div className="signature-grid">
+        <div className="rka-meta-field">
+          <span className="rka-meta-label">Mengetahui / Jabatan</span>
+          {canWrite
+            ? <input className="rka-meta-input" value={jabatan} onChange={e => setJabatan(e.target.value)} style={{ width: 260 }} />
+            : <b>{jabatan}</b>}
+        </div>
+        <div className="rka-meta-field">
+          <span className="rka-meta-label">Nama</span>
+          {canWrite
+            ? <input className="rka-meta-input" value={namaTtd} onChange={e => setNamaTtd(e.target.value)} placeholder="Nama lengkap pejabat" style={{ width: 220 }} />
+            : <b>{namaTtd || '—'}</b>}
+        </div>
+        <div className="rka-meta-field">
+          <span className="rka-meta-label">NIP</span>
+          {canWrite
+            ? <input className="rka-meta-input" value={nipTtd} onChange={e => setNipTtd(e.target.value.replace(/[^0-9]/g, ''))} placeholder="18 digit NIP" style={{ width: 190 }} />
+            : <b>{nipTtd || '—'}</b>}
+        </div>
+      </div>
     </div>
 
     <div className="rka-actions">
