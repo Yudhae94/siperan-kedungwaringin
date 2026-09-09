@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../services/api'
 import { makePdfDownload, exportRkaFormPdf, hitungJumlah, parseNumber, isAccountRow } from '../utils/pdf'
+import { Trash2, Eraser } from 'lucide-react'
 
 const fmt = value => new Intl.NumberFormat('id-ID').format(parseNumber(value) || 0)
 
@@ -38,6 +39,19 @@ function RkaForm() {
       }
     }).catch(() => {})
   }, [])
+
+  const deleteRow = index => {
+    setRows(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const clearRow = index => {
+    setRows(prev => prev.map((row, i) => i === index ? { ...row, kode: '', uraian: '', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '' } : row))
+  }
+
+  const resetAllRows = () => {
+    if (!window.confirm('Kosongkan semua baris dan mulai input dari awal?')) return
+    setRows([{ kode: '', uraian: '', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '' }])
+  }
 
   const updateRow = (index, field, value) => {
     setRows(prev => prev.map((row, i) => {
@@ -86,7 +100,10 @@ function RkaForm() {
         <h2>Input RKA</h2>
         <p>Rencana Kerja dan Anggaran per kegiatan SKPD</p>
       </div>
-      <button className="secondary" type="button" onClick={() => setRows(prev => [...prev, { kode: '', uraian: '', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '' }])}>Tambah baris</button>
+      <div className="rka-head-actions">
+        <button className="secondary" type="button" onClick={resetAllRows} title="Kosongkan semua baris"><Eraser size={15}/> Reset semua</button>
+        <button className="secondary" type="button" onClick={() => setRows(prev => [...prev, { kode: '', uraian: '', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '' }])}>Tambah baris</button>
+      </div>
     </div>
 
     <div className="rka-sheet">
@@ -111,6 +128,7 @@ function RkaForm() {
             <th>Harga</th>
             <th>PPN</th>
             <th>Jumlah</th>
+            <th style={{ width: 70 }}>Aksi</th>
           </tr>
         </thead>
         <tbody>
@@ -129,6 +147,10 @@ function RkaForm() {
                 {detail && autoJumlah
                   ? <input value={fmt(autoJumlah)} readOnly className="rka-readonly" title="Otomatis: Koefisien × Harga" />
                   : <input value={row.jumlah} onChange={e => updateRow(index, 'jumlah', e.target.value)} />}
+              </td>
+              <td className="rka-row-actions">
+                <button type="button" className="icon-btn" title="Kosongkan baris ini" onClick={() => clearRow(index)}><Eraser size={15}/></button>
+                <button type="button" className="table-action danger" title="Hapus baris ini" onClick={() => deleteRow(index)}><Trash2 size={15}/></button>
               </td>
             </tr>
             )
