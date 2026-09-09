@@ -38,7 +38,7 @@ function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canW
         <button onClick={() => onNavigate('pengendalian')}>Buka pengendalian →</button>
       </div>
 
-      {showRkaForm && <RkaForm isSuperAdmin={isSuperAdmin} />}
+      {showRkaForm && <RkaForm isSuperAdmin={isSuperAdmin} canWrite={canWrite} />}
 
       <section className="card table-card">
         <div className="table-toolbar">
@@ -58,3 +58,4 @@ function Planning({ programs, query, setQuery, onAdd, onDelete, onProgress, canW
 }
 
 export default Planning
+

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { api } from '../services/api'
 import { exportRkaFormPdf, hitungJumlah, parseNumber, isAccountRow } from '../utils/pdf'
-import { Trash2, Eraser, Download, Save, Pencil } from 'lucide-react'
+import { Trash2, Eraser, Download, Save, Pencil, Check } from 'lucide-react'
 
 const fmt = value => new Intl.NumberFormat('id-ID').format(parseNumber(value) || 0)
 
-function RkaForm({ isSuperAdmin }) {
+function RkaForm({ isSuperAdmin, canWrite }) {
   const defaultRows = [
     { kode: '5', uraian: 'BELANJA DAERAH', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '', keterangan: '' },
     { kode: '5.1', uraian: 'BELANJA OPERASI', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '', keterangan: '' },
@@ -22,13 +22,23 @@ function RkaForm({ isSuperAdmin }) {
   const [rows, setRows] = useState(defaultRows)
   const [tahun, setTahun] = useState('2025')
   const [editTahun, setEditTahun] = useState(false)
+  const [editHeader, setEditHeader] = useState(false)
   const [status, setStatus] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedData, setSavedData] = useState(null)
 
+  // Header editable state
+  const [headerTitle, setHeaderTitle] = useState('RINCIAN BELANJA SKPD')
+  const [headerSubtitle, setHeaderSubtitle] = useState('PEMERINTAH KABUPATEN BEKASI')
+  const [headerFormulir, setHeaderFormulir] = useState('RKA MANUAL - RINCIAN BELANJA SKPD')
+  const [satuan, setSatuan] = useState('Kecamatan Kedungwaringin')
+
   useEffect(() => {
     api('/rka').then(data => {
       if (data.tahun) setTahun(String(data.tahun))
+      if (data.satuan) setSatuan(data.satuan)
+      if (data.title) setHeaderTitle(data.title)
+      if (data.formulir) setHeaderFormulir(data.formulir)
       if (Array.isArray(data.rows) && data.rows.length) {
         setRows(data.rows.map(row => ({
           id: row.id,
@@ -47,6 +57,7 @@ function RkaForm({ isSuperAdmin }) {
   }, [])
 
   const deleteRow = index => {
+    if (!isSuperAdmin) return
     setRows(prev => prev.filter((_, i) => i !== index))
   }
 
@@ -82,10 +93,10 @@ function RkaForm({ isSuperAdmin }) {
   const saveRka = () => {
     setSaving(true)
     api('/rka', { method: 'POST', body: JSON.stringify({
-      title: 'Rencana Kerja dan Anggaran',
+      title: headerTitle,
       tahun,
-      satuan: 'Kecamatan Kedungwaringin',
-      formulir: 'RKA MANUAL - RINCIAN BELANJA SKPD',
+      satuan,
+      formulir: headerFormulir,
       rows: computedRows
     }) }).then(data => {
       setSavedData(data)
@@ -97,10 +108,10 @@ function RkaForm({ isSuperAdmin }) {
 
   const exportRkaPdf = () => {
     exportRkaFormPdf({
-      title: 'Rencana Kerja dan Anggaran',
+      title: headerTitle,
       tahun,
-      satuan: 'Kecamatan Kedungwaringin',
-      formulir: 'RKA MANUAL - RINCIAN BELANJA SKPD',
+      satuan,
+      formulir: headerFormulir,
       rows: computedRows,
       total
     })
@@ -113,6 +124,11 @@ function RkaForm({ isSuperAdmin }) {
         <p>Rencana Kerja dan Anggaran per kegiatan SKPD</p>
       </div>
       <div className="rka-head-actions">
+        {canWrite && (
+          editHeader
+            ? <button className="primary xs" type="button" onClick={() => setEditHeader(false)}><Check size={15}/> Simpan Header</button>
+            : <button className="secondary xs" type="button" onClick={() => setEditHeader(true)}><Pencil size={15}/> Edit Header</button>
+        )}
         <button className="secondary" type="button" onClick={resetAllRows} title="Kosongkan semua baris"><Eraser size={15}/> Reset semua</button>
         <button className="secondary" type="button" onClick={() => setRows(prev => [...prev, { kode: '', uraian: '', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '', keterangan: '' }])}>Tambah baris</button>
       </div>
@@ -122,7 +138,13 @@ function RkaForm({ isSuperAdmin }) {
       <label>Tahun Anggaran:
         {editTahun
           ? <span className="tahun-edit"><input value={tahun} onChange={e => setTahun(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} style={{ width: 80 }} /><button className="primary xs" type="button" onClick={() => setEditTahun(false)}>Simpan</button></span>
-          : <span className="tahun-view"><b>{tahun}</b><button className="icon-btn" type="button" title="Edit tahun anggaran" onClick={() => setEditTahun(true)}><Pencil size={15}/></button></span>}
+          : <span className="tahun-view"><b>{tahun}</b>{canWrite && <button className="icon-btn" type="button" title="Edit tahun anggaran" onClick={() => setEditTahun(true)}><Pencil size={15}/></button>}</span>}
+      </label>
+      <label style={{ marginLeft: 16 }}>Satuan:
+        {canWrite
+          ? <input value={satuan} onChange={e => setSatuan(e.target.value)} style={{ width: 200, padding: '4px 8px', border: '1px solid var(--line)', borderRadius: 6 }} />
+          : <b style={{ marginLeft: 8 }}>{satuan}</b>
+        }
       </label>
     </div>
 
@@ -130,12 +152,25 @@ function RkaForm({ isSuperAdmin }) {
       <table className="rka-table">
         <thead>
           <tr>
-            <th colSpan="4" className="rka-title-cell">RINCIAN BELANJA SKPD<br/>PEMERINTAH KABUPATEN BEKASI<br/>SATUAN KERJA PERANGKAT DAERAH</th>
+            <th colSpan="4" className="rka-title-cell">
+              {editHeader
+                ? <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <input value={headerTitle} onChange={e => setHeaderTitle(e.target.value)} style={{ textAlign: 'center', fontWeight: 700, fontSize: 11 }} />
+                    <input value={headerSubtitle} onChange={e => setHeaderSubtitle(e.target.value)} style={{ textAlign: 'center', fontSize: 10 }} />
+                  </div>
+                : <div>{headerTitle}<br/>{headerSubtitle}<br/>SATUAN KERJA PERANGKAT DAERAH</div>
+              }
+            </th>
             <th className="rka-title-cell">SATUAN</th>
-            <th className="rka-title-cell" colSpan="4">FORMULIR<br/>RKA MANUAL - RINCIAN BELANJA SKPD</th>
+            <th className="rka-title-cell" colSpan="4">
+              {editHeader
+                ? <input value={headerFormulir} onChange={e => setHeaderFormulir(e.target.value)} style={{ textAlign: 'center', fontWeight: 700, fontSize: 11, width: '100%' }} />
+                : <div>FORMULIR<br/>{headerFormulir}</div>
+              }
+            </th>
           </tr>
           <tr>
-            <th colSpan="9" className="rka-center">PEMERINTAH KABUPATEN BEKASI TAHUN ANGGARAN {tahun}</th>
+            <th colSpan="9" className="rka-center">{headerSubtitle} TAHUN ANGGARAN {tahun}</th>
           </tr>
           <tr>
             <th colSpan="9" className="rka-center">RINCIAN ANGGARAN BELANJA KEGIATAN<br/>SATUAN KERJA PERANGKAT DAERAH</th>
@@ -149,7 +184,7 @@ function RkaForm({ isSuperAdmin }) {
             <th>PPN %</th>
             <th>JUMLAH (RP)</th>
             <th>KETERANGAN</th>
-            <th style={{ width: 90 }}>AKSI</th>
+            {canWrite && <th style={{ width: 90 }}>AKSI</th>}
           </tr>
         </thead>
         <tbody>
@@ -169,26 +204,28 @@ function RkaForm({ isSuperAdmin }) {
                   : <input value={row.jumlah} onChange={e => updateRow(index, 'jumlah', e.target.value)} />}
               </td>
               <td><input value={row.keterangan} onChange={e => updateRow(index, 'keterangan', e.target.value)} placeholder="Keterangan" /></td>
-              <td className="rka-row-actions">
-                <button type="button" className="icon-btn" title="Kosongkan baris ini" onClick={() => clearRow(index)}><Eraser size={15}/></button>
-                {isSuperAdmin && <button type="button" className="table-action danger" title="Hapus baris ini" onClick={() => deleteRow(index)}><Trash2 size={15}/> Hapus</button>}
-              </td>
+              {canWrite && (
+                <td className="rka-row-actions">
+                  <button type="button" className="icon-btn" title="Kosongkan baris ini" onClick={() => clearRow(index)}><Eraser size={15}/></button>
+                  {isSuperAdmin && <button type="button" className="table-action danger" title="Hapus baris ini" onClick={() => deleteRow(index)}><Trash2 size={15}/> Hapus</button>}
+                </td>
+              )}
             </tr>
             )
           })}
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan="6" style={{ textAlign: 'right' }}><b>Jumlah Anggaran Sub Kegiatan</b></td>
+            <td colSpan={canWrite ? 6 : 6} style={{ textAlign: 'right' }}><b>Jumlah Anggaran Sub Kegiatan</b></td>
             <td><b>Rp. {new Intl.NumberFormat('id-ID').format(total)}</b></td>
-            <td colSpan="2"></td>
+            <td colSpan={canWrite ? 2 : 2}></td>
           </tr>
         </tfoot>
       </table>
     </div>
 
     <div className="rka-actions">
-      <button className="primary" type="button" onClick={saveRka} disabled={saving}>{saving ? 'Menyimpan...' : <><Save size={16}/> Simpan RKA</>}</button>
+      {canWrite && <button className="primary" type="button" onClick={saveRka} disabled={saving}>{saving ? 'Menyimpan...' : <><Save size={16}/> Simpan RKA</>}</button>}
       <button className="secondary" type="button" onClick={exportRkaPdf}><Download size={16}/> Export PDF</button>
     </div>
     {status && <p className="muted" style={{ marginTop: 12 }}>{status}</p>}
