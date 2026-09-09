@@ -129,8 +129,8 @@ function RkaForm({ isSuperAdmin, canWrite }) {
             ? <button className="primary xs" type="button" onClick={() => setEditHeader(false)}><Check size={15}/> Simpan Header</button>
             : <button className="secondary xs" type="button" onClick={() => setEditHeader(true)}><Pencil size={15}/> Edit Header</button>
         )}
-        <button className="secondary" type="button" onClick={resetAllRows} title="Kosongkan semua baris"><Eraser size={15}/> Reset semua</button>
-        <button className="secondary" type="button" onClick={() => setRows(prev => [...prev, { kode: '', uraian: '', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '', keterangan: '' }])}>Tambah baris</button>
+        {canWrite && <button className="secondary" type="button" onClick={resetAllRows} title="Kosongkan semua baris"><Eraser size={15}/> Reset semua</button>}
+        {canWrite && <button className="secondary" type="button" onClick={() => setRows(prev => [...prev, { kode: '', uraian: '', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '', keterangan: '' }])}>Tambah baris</button>}
       </div>
     </div>
 
@@ -192,18 +192,18 @@ function RkaForm({ isSuperAdmin, canWrite }) {
             const detail = !isAccountRow(row)
             return (
             <tr key={row.id || `rka-row-${index}`}>
-              <td><input value={row.kode} onChange={e => updateRow(index, 'kode', e.target.value)} /></td>
-              <td><input value={row.uraian} onChange={e => updateRow(index, 'uraian', e.target.value)} /></td>
-              <td><input value={row.koefisien} onChange={e => updateRow(index, 'koefisien', e.target.value)} placeholder={detail ? 'mis. 15' : ''} /></td>
-              <td><input value={row.satuan} onChange={e => updateRow(index, 'satuan', e.target.value)} placeholder={detail ? 'mis. Orang / Unit' : ''} /></td>
-              <td><input value={row.harga} onChange={e => updateRow(index, 'harga', e.target.value)} placeholder={detail ? 'mis. 5.000' : ''} /></td>
-              <td><input value={row.ppn} onChange={e => updateRow(index, 'ppn', e.target.value)} placeholder={detail ? 'mis. 10' : ''} /></td>
+              <td><input value={row.kode} readOnly={!canWrite} onChange={e => updateRow(index, 'kode', e.target.value)} /></td>
+              <td><input value={row.uraian} readOnly={!canWrite} onChange={e => updateRow(index, 'uraian', e.target.value)} /></td>
+              <td><input value={row.koefisien} readOnly={!canWrite} onChange={e => updateRow(index, 'koefisien', e.target.value)} placeholder={detail ? 'mis. 15' : ''} /></td>
+              <td><input value={row.satuan} readOnly={!canWrite} onChange={e => updateRow(index, 'satuan', e.target.value)} placeholder={detail ? 'mis. Orang / Unit' : ''} /></td>
+              <td><input value={row.harga} readOnly={!canWrite} onChange={e => updateRow(index, 'harga', e.target.value)} placeholder={detail ? 'mis. 5.000' : ''} /></td>
+              <td><input value={row.ppn} readOnly={!canWrite} onChange={e => updateRow(index, 'ppn', e.target.value)} placeholder={detail ? 'mis. 10' : ''} /></td>
               <td>
                 {detail
                   ? <input value={row.jumlah} readOnly className="rka-readonly" title="Otomatis: Koefisien x Harga Satuan + PPN" />
-                  : <input value={row.jumlah} onChange={e => updateRow(index, 'jumlah', e.target.value)} />}
+                  : <input value={row.jumlah} readOnly={!canWrite} onChange={e => updateRow(index, 'jumlah', e.target.value)} />}
               </td>
-              <td><input value={row.keterangan} onChange={e => updateRow(index, 'keterangan', e.target.value)} placeholder="Keterangan" /></td>
+              <td><input value={row.keterangan} readOnly={!canWrite} onChange={e => updateRow(index, 'keterangan', e.target.value)} placeholder="Keterangan" /></td>
               {canWrite && (
                 <td className="rka-row-actions">
                   <button type="button" className="icon-btn" title="Kosongkan baris ini" onClick={() => clearRow(index)}><Eraser size={15}/></button>
@@ -227,6 +227,7 @@ function RkaForm({ isSuperAdmin, canWrite }) {
     <div className="rka-actions">
       {canWrite && <button className="primary" type="button" onClick={saveRka} disabled={saving}>{saving ? 'Menyimpan...' : <><Save size={16}/> Simpan RKA</>}</button>}
       <button className="secondary" type="button" onClick={exportRkaPdf}><Download size={16}/> Export PDF</button>
+      {!canWrite && <p className="muted" style={{ margin: 0 }}>Anda masuk sebagai User — hanya Admin & Super Admin yang dapat mengubah RKA.</p>}
     </div>
     {status && <p className="muted" style={{ marginTop: 12 }}>{status}</p>}
   </section>
