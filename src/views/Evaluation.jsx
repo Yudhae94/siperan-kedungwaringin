@@ -32,10 +32,10 @@ function Evaluation({ programs, docs, approvalBoard, onUpload, onVerify, onDelet
   }
 
   return <><PageTitle eyebrow="Siklus kinerja · Akuntabilitas" title="Evaluasi & Pelaporan">
-    <div className="review-actions">
-      <button className={tab === 'laporan' ? 'primary' : 'secondary'} type="button" onClick={() => setTab('laporan')}>Laporan & Analisis</button>
-      <button className={tab === 'dokumen' ? 'primary' : 'secondary'} type="button" onClick={() => setTab('dokumen')}>Dokumen & Persetujuan</button>
-      {canWrite && tab === 'dokumen' && <Button onClick={onUpload}><Upload size={17}/> Unggah laporan</Button>}
+      <div className="eval-tabs">
+      <button className={`subnav-btn ${tab === 'laporan' ? 'primary' : ''}`} type="button" onClick={() => setTab('laporan')}>Laporan & Analisis</button>
+      <button className={`subnav-btn ${tab === 'dokumen' ? 'primary' : ''}`} type="button" onClick={() => setTab('dokumen')}>Dokumen & Persetujuan</button>
+      {canWrite && tab === 'dokumen' && <button className="primary" onClick={onUpload}><Upload size={17}/> Unggah laporan</button>}
     </div>
   </PageTitle>
   {tab === 'laporan' && <EvaluationReports canWrite={canWrite} bidangOptions={bidangOptions || []} notify={notify} />}
