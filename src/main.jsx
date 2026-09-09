@@ -10,6 +10,7 @@ import {
   FileSpreadsheet, ClipboardPen, Route
 } from 'lucide-react'
 import './styles.css'
+import ClinicPage from './views/ClinicPage'
 
 const bidangOptions = [
   'Sekretariat - Bagian Umum dan Kepegawaian',
