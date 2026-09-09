@@ -1,12 +1,38 @@
+# Database
 siperan.sqlite
 siperan.sqlite-shm
 siperan.sqlite-wal
+
+# Dependencies & build
 node_modules
 dist
 
+# Uploads
 uploads/
+
+# Logs
 *.log
 dev-out.log
 dev-err.log
 server-out.log
 server-err.log
+
+# Development artifacts
+*.png
+*.zip
+backup/
+project_info__*.md
+qa-*.mjs
+run-qa-*.mjs
+test-*.mjs
+test-*.ps1
+api-test.mjs
+check-tables.mjs
+cleanup-qa.mjs
+offline-run.bat
+backup-project.bat
+backup-project.ps1
+
+# Environment
+.env
+.env.local

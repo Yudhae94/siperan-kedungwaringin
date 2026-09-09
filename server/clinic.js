@@ -82,7 +82,7 @@ export function registerClinic(app, db, auth, write, superAdminOnly, uploadsDir)
     try { handler(req, res) } catch (error) { if (error.status === 400) res.status(400).json({ error: error.message }); else next(error) }
   }
   const canModerate = user => ['Super Admin', 'Admin'].includes(user.role)
-  const canApprove = user => ['Super Admin', 'Camat', 'Sekcam'].includes(user.role)
+  const canApprove = user => user.role === 'Super Admin'
 
   // ===== Threads (Q&A) =====
   app.get('/api/clinic/threads', auth, wrap((req, res) => {

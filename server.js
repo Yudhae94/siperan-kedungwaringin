@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS admin_contacts (id INTEGER PRIMARY KEY AUTOINCREMENT,
 CREATE TABLE IF NOT EXISTS doc_reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER NOT NULL, reviewer TEXT NOT NULL, action TEXT NOT NULL, notes TEXT, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS section_approvals (id INTEGER PRIMARY KEY AUTOINCREMENT, section TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'Belum disetujui', notes TEXT, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS rka_forms (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, tahun TEXT NOT NULL, satuan TEXT NOT NULL, formulir TEXT NOT NULL, total REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS rka_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, rka_id INTEGER NOT NULL, kode TEXT, uraian TEXT, koefisien TEXT, satuan TEXT, harga TEXT, ppn TEXT, jumlah TEXT, FOREIGN KEY(rka_id) REFERENCES rka_forms(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS rka_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, rka_id INTEGER NOT NULL, kode TEXT, uraian TEXT, koefisien TEXT, satuan TEXT, harga TEXT, ppn TEXT, jumlah TEXT, keterangan TEXT, FOREIGN KEY(rka_id) REFERENCES rka_forms(id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS monthly_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, periode TEXT NOT NULL, pagu REAL NOT NULL DEFAULT 0, realisasi_keuangan REAL NOT NULL DEFAULT 0, realisasi_fisik REAL NOT NULL DEFAULT 0, catatan TEXT, created_at TEXT NOT NULL);`)
 
 for (const col of [
@@ -321,6 +321,30 @@ CREATE TABLE IF NOT EXISTS spj_riwayat (
   oleh TEXT,
   at TEXT NOT NULL,
   FOREIGN KEY(spj_id) REFERENCES spj_pencairan(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS dpa_forms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usulan_id INTEGER,
+  kode_kegiatan TEXT,
+  nama_kegiatan TEXT NOT NULL,
+  bidang TEXT,
+  pagu REAL NOT NULL DEFAULT 0,
+  rincian TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'Draft',
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS kartu_kendali (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  program_id INTEGER,
+  kode_kegiatan TEXT,
+  nama_kegiatan TEXT NOT NULL,
+  bidang TEXT,
+  tahapan TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'Aktif',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );`)
 
 seed()
@@ -665,9 +689,10 @@ app.post('/api/rka', auth, write, (req, res) => {
     formId = insert.lastInsertRowid
   }
 
+  try { db.exec('ALTER TABLE rka_rows ADD COLUMN keterangan TEXT') } catch { /* kolom sudah ada */ }
   db.prepare('DELETE FROM rka_rows WHERE rka_id = ?').run(formId)
-  const rowStmt = db.prepare('INSERT INTO rka_rows (rka_id, kode, uraian, koefisien, satuan, harga, ppn, jumlah) VALUES (?,?,?,?,?,?,?,?)')
-  rows.forEach(row => rowStmt.run(formId, row.kode || '', row.uraian || '', row.koefisien || '', row.satuan || '', row.harga || '', row.ppn || '', row.jumlah || ''))
+  const rowStmt = db.prepare('INSERT INTO rka_rows (rka_id, kode, uraian, koefisien, satuan, harga, ppn, jumlah, keterangan) VALUES (?,?,?,?,?,?,?,?,?)')
+  rows.forEach(row => rowStmt.run(formId, row.kode || '', row.uraian || '', row.koefisien || '', row.satuan || '', row.harga || '', row.ppn || '', row.jumlah || '', row.keterangan || ''))
 
   const saved = db.prepare('SELECT * FROM rka_forms WHERE id = ?').get(formId)
   const savedRows = db.prepare('SELECT * FROM rka_rows WHERE rka_id = ? ORDER BY id').all(formId)
@@ -727,13 +752,13 @@ app.post('/api/docs', auth, write, upload.single('file'), (req, res) => {
   res.status(201).json({ ...created, review_log: [] })
 })
 
-app.patch('/api/docs/:id', auth, write, (req, res) => {
+app.patch('/api/docs/:id', auth, superAdminOnly, (req, res) => {
   const b = req.body
   db.prepare('UPDATE docs SET status=?, preview=? WHERE id=?').run(b.status || 'Terverifikasi', b.preview || 'Dokumen sudah ditinjau dan siap ditindaklanjuti.', req.params.id)
   res.json({ ok: true })
 })
 
-app.post('/api/docs/:id/review', auth, write, (req, res) => {
+app.post('/api/docs/:id/review', auth, superAdminOnly, (req, res) => {
   const { reviewer, action, notes } = req.body || {}
   const payload = {
     reviewer: reviewer || req.session.user.name,
@@ -759,7 +784,7 @@ app.delete('/api/docs/:id', auth, superAdminOnly, (req, res) => {
 
 app.get('/api/doc-reviews', auth, (req, res) => res.json(db.prepare('SELECT * FROM doc_reviews ORDER BY id DESC').all()))
 app.get('/api/section-approvals', auth, (req, res) => res.json(db.prepare('SELECT * FROM section_approvals ORDER BY id').all()))
-app.patch('/api/section-approvals/:section', auth, write, (req, res) => {
+app.patch('/api/section-approvals/:section', auth, superAdminOnly, (req, res) => {
   const section = decodeURIComponent(req.params.section)
   const { status, notes } = req.body || {}
   if (!status) return res.status(400).json({ error: 'Status persetujuan wajib diisi.' })
@@ -861,7 +886,7 @@ app.post('/api/usulan-rka/:id/dokumen', auth, write, upload.single('file'), (req
   res.status(201).json(doc)
 })
 
-app.delete('/api/usulan-rka/:id/dokumen/:docId', auth, write, (req, res) => {
+app.delete('/api/usulan-rka/:id/dokumen/:docId', auth, superAdminOnly, (req, res) => {
   const doc = db.prepare('SELECT * FROM usulan_rka_dokumen WHERE id = ? AND usulan_id = ?').get(req.params.docId, req.params.id)
   if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan.' })
   if (doc.storage_name) {
@@ -872,7 +897,7 @@ app.delete('/api/usulan-rka/:id/dokumen/:docId', auth, write, (req, res) => {
   res.json({ ok: true })
 })
 
-app.patch('/api/usulan-rka/:id/verifikasi', auth, write, (req, res) => {
+app.patch('/api/usulan-rka/:id/verifikasi', auth, superAdminOnly, (req, res) => {
   const usulan = db.prepare('SELECT * FROM usulan_rka WHERE id = ?').get(req.params.id)
   if (!usulan) return res.status(404).json({ error: 'Usulan tidak ditemukan.' })
   const { keputusan, catatan } = req.body || {}
@@ -960,6 +985,9 @@ app.patch('/api/spj/:id', auth, write, (req, res) => {
   const row = db.prepare('SELECT * FROM spj_pencairan WHERE id=?').get(req.params.id)
   if (!row) return res.status(404).json({ error: 'Data SPJ tidak ditemukan.' })
   const b = req.body || {}
+  if (b.status && req.session.user.role !== 'Super Admin') {
+    return res.status(403).json({ error: 'Hanya Super Admin yang dapat mengubah status verifikasi SPJ.' })
+  }
   const now = new Date().toISOString()
   const num = (val, fallback) => {
     const n = Number(val)
@@ -992,6 +1020,131 @@ app.delete('/api/spj/:id', auth, superAdminOnly, (req, res) => {
   db.prepare('DELETE FROM spj_riwayat WHERE spj_id=?').run(row.id)
   db.prepare('DELETE FROM spj_pencairan WHERE id=?').run(row.id)
   res.json({ ok: true })
+})
+
+// ===== DPA (Dokumen Pelaksanaan Anggaran) =====
+app.get('/api/dpa', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM dpa_forms ORDER BY id DESC').all()
+  res.json(rows.map(r => ({ ...r, rincian: JSON.parse(r.rincian || '[]') })))
+})
+app.post('/api/dpa', auth, write, (req, res) => {
+  const b = req.body || {}
+  const now = new Date().toISOString()
+  if (!String(b.nama_kegiatan || '').trim()) return res.status(400).json({ error: 'Nama kegiatan wajib diisi.' })
+  const info = db.prepare(`INSERT INTO dpa_forms (usulan_id,kode_kegiatan,nama_kegiatan,bidang,pagu,rincian,status,created_by,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    b.usulan_id || null,
+    b.kode_kegiatan || '',
+    String(b.nama_kegiatan).trim(),
+    b.bidang || '',
+    Number(b.pagu) || 0,
+    JSON.stringify(b.rincian || []),
+    b.status || 'Draft',
+    req.session.user.name,
+    now, now
+  )
+  res.status(201).json(db.prepare('SELECT * FROM dpa_forms WHERE id=?').get(info.lastInsertRowid))
+})
+app.patch('/api/dpa/:id', auth, write, (req, res) => {
+  const row = db.prepare('SELECT * FROM dpa_forms WHERE id=?').get(req.params.id)
+  if (!row) return res.status(404).json({ error: 'DPA tidak ditemukan.' })
+  const b = req.body || {}
+  const now = new Date().toISOString()
+  db.prepare('UPDATE dpa_forms SET usulan_id=?,kode_kegiatan=?,nama_kegiatan=?,bidang=?,pagu=?,rincian=?,status=?,updated_at=? WHERE id=?').run(
+    b.usulan_id !== undefined ? b.usulan_id : row.usulan_id,
+    b.kode_kegiatan !== undefined ? b.kode_kegiatan : row.kode_kegiatan,
+    b.nama_kegiatan !== undefined ? String(b.nama_kegiatan).trim() : row.nama_kegiatan,
+    b.bidang !== undefined ? b.bidang : row.bidang,
+    b.pagu !== undefined ? Number(b.pagu) || 0 : row.pagu,
+    b.rincian !== undefined ? JSON.stringify(b.rincian) : row.rincian,
+    b.status !== undefined ? b.status : row.status,
+    now,
+    row.id
+  )
+  res.json(db.prepare('SELECT * FROM dpa_forms WHERE id=?').get(row.id))
+})
+app.delete('/api/dpa/:id', auth, superAdminOnly, (req, res) => {
+  const deleted = db.prepare('DELETE FROM dpa_forms WHERE id=?').run(req.params.id)
+  if (!deleted.changes) return res.status(404).json({ error: 'DPA tidak ditemukan.' })
+  res.json({ ok: true })
+})
+
+// ===== Kartu Kendali =====
+app.get('/api/kartu-kendali', auth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM kartu_kendali ORDER BY id DESC').all()
+  res.json(rows.map(r => ({ ...r, tahapan: JSON.parse(r.tahapan || '[]') })))
+})
+app.post('/api/kartu-kendali', auth, write, (req, res) => {
+  const b = req.body || {}
+  const now = new Date().toISOString()
+  if (!String(b.nama_kegiatan || '').trim()) return res.status(400).json({ error: 'Nama kegiatan wajib diisi.' })
+  const info = db.prepare(`INSERT INTO kartu_kendali (program_id,kode_kegiatan,nama_kegiatan,bidang,tahapan,status,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?)`).run(
+    b.program_id || null,
+    b.kode_kegiatan || '',
+    String(b.nama_kegiatan).trim(),
+    b.bidang || '',
+    JSON.stringify(b.tahapan || []),
+    b.status || 'Aktif',
+    now, now
+  )
+  res.status(201).json(db.prepare('SELECT * FROM kartu_kendali WHERE id=?').get(info.lastInsertRowid))
+})
+app.patch('/api/kartu-kendali/:id', auth, write, (req, res) => {
+  const row = db.prepare('SELECT * FROM kartu_kendali WHERE id=?').get(req.params.id)
+  if (!row) return res.status(404).json({ error: 'Kartu kendali tidak ditemukan.' })
+  const b = req.body || {}
+  const now = new Date().toISOString()
+  db.prepare('UPDATE kartu_kendali SET program_id=?,kode_kegiatan=?,nama_kegiatan=?,bidang=?,tahapan=?,status=?,updated_at=? WHERE id=?').run(
+    b.program_id !== undefined ? b.program_id : row.program_id,
+    b.kode_kegiatan !== undefined ? b.kode_kegiatan : row.kode_kegiatan,
+    b.nama_kegiatan !== undefined ? String(b.nama_kegiatan).trim() : row.nama_kegiatan,
+    b.bidang !== undefined ? b.bidang : row.bidang,
+    b.tahapan !== undefined ? JSON.stringify(b.tahapan) : row.tahapan,
+    b.status !== undefined ? b.status : row.status,
+    now,
+    row.id
+  )
+  res.json(db.prepare('SELECT * FROM kartu_kendali WHERE id=?').get(row.id))
+})
+app.delete('/api/kartu-kendali/:id', auth, superAdminOnly, (req, res) => {
+  const deleted = db.prepare('DELETE FROM kartu_kendali WHERE id=?').run(req.params.id)
+  if (!deleted.changes) return res.status(404).json({ error: 'Kartu kendali tidak ditemukan.' })
+  res.json({ ok: true })
+})
+
+// ===== LKA (Lembar Kendali Anggaran) =====
+app.get('/api/lka', auth, (req, res) => {
+  const programs = db.prepare('SELECT * FROM programs ORDER BY kode').all()
+  const spj = db.prepare("SELECT * FROM spj_pencairan WHERE status = 'Selesai Dicairkan'").all()
+  const rows = programs.map(p => {
+    const paid = spj.filter(s => s.program_id === p.id)
+    const realisasi = paid.reduce((n, s) => n + s.nilai_pencairan, 0)
+    return {
+      kode: p.kode,
+      nama: p.nama,
+      bidang: p.bidang,
+      pagu: p.pagu,
+      realisasi,
+      sisa: Math.max(0, p.pagu - realisasi),
+      serapan: p.pagu > 0 ? Math.min(100, Math.round(realisasi / p.pagu * 100)) : 0
+    }
+  })
+  const totals = rows.reduce((t, r) => ({ pagu: t.pagu + r.pagu, realisasi: t.realisasi + r.realisasi, sisa: t.sisa + r.sisa }), { pagu: 0, realisasi: 0, sisa: 0 })
+  res.json({ rows, totals: { ...totals, serapan: totals.pagu > 0 ? Math.round(totals.realisasi / totals.pagu * 100) : 0 } })
+})
+
+// ===== Edit dokumen pendukung usulan (Super Admin saja) =====
+app.patch('/api/usulan-rka/:id/dokumen/:docId', auth, superAdminOnly, (req, res) => {
+  const doc = db.prepare('SELECT * FROM usulan_rka_dokumen WHERE id=? AND usulan_id=?').get(req.params.docId, req.params.id)
+  if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan.' })
+  const b = req.body || {}
+  db.prepare('UPDATE usulan_rka_dokumen SET jenis_dokumen=?, name=? WHERE id=?').run(
+    ['KAK', 'RAB', 'Jadwal Pelaksanaan'].includes(b.jenis_dokumen) ? b.jenis_dokumen : doc.jenis_dokumen,
+    b.name !== undefined ? String(b.name).trim() || doc.name : doc.name,
+    doc.id
+  )
+  res.json(db.prepare('SELECT * FROM usulan_rka_dokumen WHERE id=?').get(doc.id))
 })
 
 app.get('/api/uploads/:filename', auth, (req, res) => {

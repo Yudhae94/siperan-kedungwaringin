@@ -37,7 +37,12 @@ function App() {
   const [unitFilter, setUnitFilter] = useState('Semua Unit')
   const unitFilterOptions = ['Semua Unit', ...bidangOptions]
   const [modal, setModal] = useState(null)
+  const [editDoc, setEditDoc] = useState(null)
   const [usulanRka, setUsulanRka] = useState([])
+  const [dpaList, setDpaList] = useState([])
+  const [kartuList, setKartuList] = useState([])
+ const [lkaData, setLkaData] = useState({ rows: [], totals: { pagu: 0, realisasi: 0, sisa: 0, serapan: 0 } })
+  const [spjList, setSpjList] = useState([])
   const [progressProgram, setProgressProgram] = useState(null)
   const [progressValue, setProgressValue] = useState(0)
   const [toast, setToast] = useState('')
@@ -56,7 +61,7 @@ function App() {
   }, [])
   useEffect(() => {
     if (!currentUser) return
-    Promise.all([api('/programs'), api('/docs'), api('/monthly-reports'), api('/events'), api('/log'), api('/users'), api('/admin-contacts'), api('/section-approvals'), api('/usulan-rka')]).then(([p,d,r,e,l,u,c,a,ur]) => { setPrograms(p); setDocs(d); setReports(r); setEvents(e); setAuthLog(l); setUsers(u); setAdminContacts(c.length ? c : defaultAdminContacts); setApprovalBoard(a.length ? a : defaultApprovalBoard); setUsulanRka(ur) }).catch(() => notify('Gagal memuat data server'))
+    Promise.all([api('/programs'), api('/docs'), api('/monthly-reports'), api('/events'), api('/log'), api('/users'), api('/admin-contacts'), api('/section-approvals'), api('/usulan-rka'), api('/dpa'), api('/kartu-kendali'), api('/lka'), api('/spj')]).then(([p,d,r,e,l,u,c,a,ur,dp,kk,lk,sp]) => { setPrograms(p); setDocs(d); setReports(r); setEvents(e); setAuthLog(l); setUsers(u); setAdminContacts(c.length ? c : defaultAdminContacts); setApprovalBoard(a.length ? a : defaultApprovalBoard); setUsulanRka(ur); setDpaList(dp); setKartuList(kk); setLkaData(lk); setSpjList(sp) }).catch(() => notify('Gagal memuat data server'))
   }, [currentUser])
   useEffect(() => {
     if (!currentUser) return
@@ -126,7 +131,7 @@ function App() {
     }).catch(err => notify(err.message || 'Gagal mengunggah dokumen'))
   }
   function verifyDoc(id) {
-    if (!canWrite) return
+    if (!isSuperAdmin) return
     const doc = docs.find(item => item.id === id)
     const notes = `Dokumen ditinjau oleh ${currentUser.name} (${currentUser.role}) pada ${new Date().toLocaleString('id-ID')}.`
     api(`/docs/${id}`, { method:'PATCH', body:JSON.stringify({ status:'Terverifikasi', preview: doc?.preview || 'Dokumen sudah ditinjau dan disetujui untuk proses selanjutnya.' }) })
@@ -182,7 +187,7 @@ function App() {
       .catch(error => notify(error.message || 'Gagal menghapus kegiatan'))
   }
   function approveSection(section, status) {
-    if (!canWrite) return
+    if (!isSuperAdmin) return
     const notes = status === 'Disetujui' ? 'Persetujuan diterbitkan oleh admin untuk sesi ini.' : 'Persetujuan ditolak dan perlu revisi lanjutan.'
     api(`/section-approvals/${encodeURIComponent(section)}`, { method:'PATCH', body: JSON.stringify({ status, notes }) }).then(updated => {
       setApprovalBoard(list => list.map(item => item.section === section ? { ...item, ...updated } : item))
@@ -191,6 +196,7 @@ function App() {
   }
   const canWrite = currentUser.role !== 'User'
   const isPerencanaan = ['Admin', 'Super Admin'].includes(currentUser.role)
+  const isSuperAdmin = currentUser.role === 'Super Admin'
   function submitUsulan(e) {
     if (!canWrite) return
     e.preventDefault()
@@ -224,7 +230,7 @@ function App() {
       .catch(err => notify(err.message || 'Gagal mengunggah dokumen'))
   }
   function verifyUsulan(id, keputusan, catatan) {
-    if (!isPerencanaan) return
+    if (!isSuperAdmin) return
     api(`/usulan-rka/${id}/verifikasi`, { method: 'PATCH', body: JSON.stringify({ keputusan, catatan }) })
       .then(updated => {
         setUsulanRka(list => list.map(item => item.id === updated.id ? updated : item))
@@ -238,6 +244,28 @@ function App() {
     api(`/usulan-rka/${id}`, { method: 'DELETE' })
       .then(() => { setUsulanRka(list => list.filter(item => item.id !== id)); notify('Usulan berhasil dihapus') })
       .catch(err => notify(err.message || 'Gagal menghapus usulan'))
+  }
+  function editDokumenPendukung(e) {
+    if (!isSuperAdmin || !editDoc) return
+    e.preventDefault()
+    const f = new FormData(e.currentTarget)
+    api(`/usulan-rka/${editDoc.usulan_id}/dokumen/${editDoc.id}`, { method: 'PATCH', body: JSON.stringify({ name: f.get('name'), jenis_dokumen: f.get('jenis_dokumen') }) })
+      .then(updated => {
+        setUsulanRka(list => list.map(item => item.id === Number(editDoc.usulan_id) ? { ...item, dokumen: (item.dokumen || []).map(d => d.id === updated.id ? updated : d) } : item))
+        setEditDoc(null)
+        notify('Dokumen pendukung berhasil diperbarui')
+      })
+      .catch(err => notify(err.message || 'Gagal memperbarui dokumen'))
+  }
+  function deleteDokumenPendukung(usulanId, docId) {
+    if (!isSuperAdmin) return
+    if (!window.confirm('Hapus dokumen pendukung ini?')) return
+    api(`/usulan-rka/${usulanId}/dokumen/${docId}`, { method: 'DELETE' })
+      .then(() => {
+        setUsulanRka(list => list.map(item => item.id === Number(usulanId) ? { ...item, dokumen:(item.dokumen || []).filter(d => d.id !== Number(docId)) } : item))
+        notify('Dokumen pendukung berhasil dihapus')
+      })
+      .catch(err => notify(err.message || 'Gagal menghapus dokumen'))
   }
   function removeProgram(id) {
     if (!canWrite) return
@@ -269,10 +297,10 @@ function App() {
         {active === 'dashboard' && <Dashboard programs={filtered} docs={docs} events={events} overall={overall} totalPagu={totalPagu} totalRealisasi={totalRealisasi} onNavigate={setActive} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} />}
         {active === 'kalender' && <CalendarPage events={events} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} onAdd={() => setModal('event')} onEdit={event => setModal({ type: 'edit-event', event })} onDelete={deleteEvent} />}
         {active === 'perencanaan' && <Planning programs={filtered} query={query} setQuery={setQuery} onAdd={() => setModal('program')} onDelete={removeProgram} onProgress={openProgressEditor} canWrite={canWrite} currentUnit={unitFilter} onUnitFilterChange={setUnitFilter} unitFilterOptions={unitFilterOptions} onNavigate={setActive} />}
-        {active === 'usulan-rka' && <UsulanRkaPage usulanRka={usulanRka} canWrite={canWrite} onAdd={() => setModal('usulan-rka')} onUpload={id => setModal({ type: 'upload-pendukung', usulanId: id })} onVerify={verifyUsulan} onDelete={deleteUsulan} isPerencanaan={isPerencanaan} isSuperAdmin={currentUser.role === 'Super Admin'} />}
-        {active === 'upload-pendukung' && <UploadPendukungPage usulanRka={usulanRka} canWrite={canWrite} onUpload={id => setModal({ type: 'upload-pendukung', usulanId: id })} onDelete={deleteUsulan} isSuperAdmin={currentUser.role === 'Super Admin'} />}
-        {active === 'verifikasi-usulan' && <VerifikasiUsulanPage usulanRka={usulanRka} isPerencanaan={isPerencanaan} onVerify={verifyUsulan} onDelete={deleteUsulan} isSuperAdmin={currentUser.role === 'Super Admin'} />}
-        {active === 'pengendalian' && <Control programs={programs} setPrograms={setPrograms} onUpload={() => setModal('doc')} canWrite={canWrite} notify={notify} />}
+        {active === 'usulan-rka' && <UsulanRkaPage usulanRka={usulanRka} canWrite={canWrite} onAdd={() => setModal('usulan-rka')} onUpload={id => setModal({ type: 'upload-pendukung', usulanId: id })} onVerify={verifyUsulan} onDelete={deleteUsulan} isPerencanaan={isSuperAdmin} isSuperAdmin={isSuperAdmin} />}
+        {active === 'upload-pendukung' && <UploadPendukungPage usulanRka={usulanRka} canWrite={canWrite} onUpload={id => setModal({ type: 'upload-pendukung', usulanId: id })} onDelete={deleteUsulan} isSuperAdmin={isSuperAdmin} onEditDoc={setEditDoc} onDeleteDoc={deleteDokumenPendukung} />}
+        {active === 'verifikasi-usulan' && <VerifikasiUsulanPage usulanRka={usulanRka} isPerencanaan={isSuperAdmin} onVerify={verifyUsulan} onDelete={deleteUsulan} isSuperAdmin={isSuperAdmin} />}
+        {active === 'pengendalian' && <Control programs={programs} setPrograms={setPrograms} onUpload={() => setModal('doc')} canWrite={canWrite} notify={notify} spjList={spjList} setSpjList={setSpjList} lkaData={lkaData} setLkaData={setLkaData} kartuList={kartuList} setKartuList={setKartuList} dpaList={dpaList} setDpaList={setDpaList} usulanRka={usulanRka} isSuperAdmin={isSuperAdmin} />}
         {active === 'evaluasi' && <Evaluation programs={programs} docs={docs} approvalBoard={approvalBoard} onUpload={() => setModal('report')} onVerify={verifyDoc} onDelete={deleteDoc} onApprove={approveSection} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} bidangOptions={bidangOptions} notify={notify} />}
         {active === 'unduhan' && <Downloads docs={docs} onUpload={() => setModal('doc')} onDelete={deleteDoc} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} />}
         {active === 'klinik' && <ClinicPage currentUser={currentUser} canWrite={canWrite} isSuperAdmin={currentUser.role === 'Super Admin'} notify={notify} />}
@@ -283,6 +311,7 @@ function App() {
     {modal === 'program' && canWrite && <Modal title="E-Usulan Kegiatan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addProgram}><label className="full">Nama usulan kegiatan<input required name="nama" placeholder="Contoh: Peningkatan Jalan Lingkungan" /></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Pagu anggaran (Rp)<input required name="pagu" type="number" min="0" /></label><label>Target (%)<input required name="target" type="number" min="1" max="100" /></label><label>Penanggung jawab (Kasi / PPTK)<input required name="penanggung" placeholder="Contoh: PPTK Infrastruktur" /></label><label>Deadline<input name="deadline" type="date" /></label><button className="primary full" type="submit"><Plus size={17}/> Tambah E-Usulan Kegiatan</button></form></Modal>}
     {modal === 'usulan-rka' && canWrite && <Modal title="Usulan RKA / KAK" onClose={() => setModal(null)}><form className="form-grid" onSubmit={submitUsulan}><label className="full">Judul usulan kegiatan<input required name="judul" placeholder="Contoh: Rehabilitasi drainase pasar desa" /></label><label>Bidang<select name="bidang">{bidangOptions.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label>Jenis usulan<select name="jenis"><option>Tahunan</option><option>Perubahan</option></select></label><label>Tahun anggaran<input required name="tahun_anggaran" type="number" min="2020" max="2100" defaultValue={new Date().getFullYear() + 1} /></label><label>Pagu anggaran (Rp)<input required name="pagu" type="number" min="0" /></label><label>Penanggung jawab (Kasi / PPTK)<input required name="penanggung" placeholder="Contoh: PPTK Infrastruktur" /></label><label>Target indikator / output<input required name="target" placeholder="Contoh: 2.400 m jalan ditingkatkan" /></label><label>Batas waktu<input required name="batas_waktu" type="date" /></label><label className="full">Catatan tambahan<textarea name="catatan" rows={3} placeholder="Opsional: keterangan pendukung usulan" /></label><button className="primary full" type="submit"><Plus size={17}/> Kirim usulan RKA / KAK</button></form></Modal>}
     {modal?.type === 'upload-pendukung' && canWrite && <Modal title="Upload Dokumen Pendukung" onClose={() => setModal(null)}><form className="form-grid" onSubmit={e => uploadDokumenPendukung(e, modal.usulanId)}><label className="full">Jenis dokumen<select name="jenis_dokumen"><option>KAK</option><option>RAB</option><option>Jadwal Pelaksanaan</option></select></label><label className="upload-field full">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB per dokumen.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
+    {editDoc && isSuperAdmin && <Modal title="Edit Dokumen Pendukung" onClose={() => setEditDoc(null)}><form className="form-grid" onSubmit={editDokumenPendukung}><label className="full">Nama dokumen<input required name="name" defaultValue={editDoc.name} /></label><label className="full">Jenis dokumen<select name="jenis_dokumen" defaultValue={editDoc.jenis_dokumen}><option>KAK</option><option>RAB</option><option>Jadwal Pelaksanaan</option></select></label><div className="modal-actions"><button className="secondary" type="button" onClick={() => setEditDoc(null)}>Batal</button><button className="primary" type="submit"><Check size={16}/> Simpan perubahan</button></div></form></Modal>}
     {progressProgram && canWrite && <Modal title={`Atur progress ${progressProgram.kode}`} onClose={() => setProgressProgram(null)}><div className="progress-editor"><p><b>{progressProgram.nama}</b></p><label>Progress saat ini: <strong>{progressValue}%</strong><input type="range" min="0" max="100" step="10" value={progressValue} onChange={e => setProgressValue(Number(e.target.value))}/></label><div className="step-grid">{[0,10,20,30,40,50,60,70,80,90,100].map(step => <button type="button" key={step} className={`step-btn ${progressValue === step ? 'active' : ''}`} onClick={() => setProgressValue(step)}>{step}%</button>)}</div><div className="modal-actions"><button className="secondary" type="button" onClick={() => setProgressProgram(null)}>Batal</button><button className="primary" type="button" onClick={saveProgress}>Simpan progress</button></div></div></Modal>}
     {modal === 'doc' && canWrite && <Modal title="Unggah dokumen" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addDoc}><label>Jenis dokumen<select name="type"><option>Renstra</option><option>Renja</option><option>DPA</option><option>RAK</option><option>Perencanaan</option><option>Pelaporan</option><option>Evaluasi</option><option>Lainnya</option></select></label><label className="upload-field">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><p className="muted">Format PDF, Excel, atau Word. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah dokumen</button></form></Modal>}
     {modal === 'report' && canWrite && <Modal title="Unggah laporan triwulan" onClose={() => setModal(null)}><form className="form-grid" onSubmit={addDoc}><label>Periode laporan<select required name="periode"><option value="">Pilih periode</option><option>Triwulan I</option><option>Triwulan II</option><option>Triwulan III</option></select></label><label className="upload-field">Pilih berkas<input required name="file" type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" /></label><input type="hidden" name="type" value="Pelaporan" /><p className="muted">Unggah laporan untuk periode Triwulan I, II, atau III. Maksimal 10 MB.</p><button className="primary full" type="submit"><Upload size={17}/> Unggah laporan</button></form></Modal>}

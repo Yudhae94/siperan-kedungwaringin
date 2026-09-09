@@ -23,7 +23,7 @@ function EvaluationReports({ canWrite, bidangOptions, notify }) {
   const [archives, setArchives] = useState([])
   const [exporting, setExporting] = useState(false)
 
-  const loadArchives = () => api('/evaluation/archives').then(setArchives).catch(() => {})
+  const loadArchives = () => api('/evaluation/archives').then(setArchives).catch(() => { })
   useEffect(() => { loadArchives() }, [])
 
   const loadReport = (type, params = filter, unit = bidang) => {
@@ -81,7 +81,7 @@ function EvaluationReports({ canWrite, bidangOptions, notify }) {
           <p style={{ fontSize: 13, margin: '8px 0 12px' }}>{item.desc}</p>
           <div className="review-actions modal-actions" style={{ justifyContent: 'flex-start' }}>
             <button className="primary xs" type="button" onClick={e => { e.stopPropagation(); loadReport(item.type) }}>
-              {item.type === 'realisasi' ? <CalendarDays size={15}/> : <FileText size={15}/>} Buka laporan
+              {item.type === 'realisasi' ? <CalendarDays size={15} /> : <FileText size={15} />} Buka laporan
             </button>
           </div>
         </div>
@@ -100,7 +100,7 @@ function EvaluationReports({ canWrite, bidangOptions, notify }) {
           <div className="review-actions">
             <button className="secondary xs" type="button" disabled={exporting} onClick={() => doExport('pdf')}>Unduh PDF</button>
             <button className="secondary xs" type="button" disabled={exporting} onClick={() => doExport('excel')}>Unduh Excel</button>
-            {canWrite && <button className="primary xs" type="button" onClick={archiveReport}><Save size={15}/> Arsipkan</button>}
+            {canWrite && <button className="primary xs" type="button" onClick={archiveReport}><Save size={15} /> Arsipkan</button>}
           </div>
         </div>
 

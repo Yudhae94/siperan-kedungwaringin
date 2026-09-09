@@ -183,3 +183,9 @@ td small{display:block;color:var(--muted);margin-top:3px}
 .realtime-indicator{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid var(--line);border-radius:20px;font-size:10px;font-weight:700;color:var(--green);background:var(--panel-alt);white-space:nowrap}
 
 .rka-readonly{background:#eef6f3;font-weight:700;color:#0d6b58}
+
+.rka-meta{margin:12px 0;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel-alt);display:flex;align-items:center;gap:10px}
+.rka-meta label{display:flex;align-items:center;gap:10px;font-weight:600}
+.tahun-view{display:inline-flex;align-items:center;gap:8px}
+.tahun-edit{display:inline-flex;align-items:center;gap:8px}
+.tahun-edit input{padding:6px 10px;border:1px solid var(--line);border-radius:8px}
