@@ -18,7 +18,10 @@ function ClinicPage({ currentUser, canWrite, isSuperAdmin, notify }) {
   const [reply, setReply] = useState('')
   const [booking, setBooking] = useState({ layanan: layananOptions[0], tanggal: '', sesi: sesiOptions[0], agenda: '' })
 
-  const isStaff = ['Super Admin', 'Admin', 'PPTK'].includes(currentUser.role)
+  // Harus sinkron dengan backend: canModerate = Super Admin/Admin (status thread),
+  // canApprove + canModerate = Super Admin/Admin/Camat/Sekcam (jadwal konsultasi).
+  const canModerateThreads = ['Super Admin', 'Admin'].includes(currentUser.role)
+  const canHandleConsultations = ['Super Admin', 'Admin', 'Camat', 'Sekcam'].includes(currentUser.role)
   const canManageTemplates = isSuperAdmin
 
   const loadAll = () => {
@@ -112,7 +115,7 @@ function ClinicPage({ currentUser, canWrite, isSuperAdmin, notify }) {
               <td>{t.last_activity ? new Date(t.last_activity).toLocaleString('id-ID') : new Date(t.created_at).toLocaleString('id-ID')}</td>
               <td><div className="row-actions">
                 <button className="secondary xs" onClick={() => openThreadDetail(t.id)}>Buka</button>
-                {isStaff && <button className="secondary xs" onClick={() => closeThread(t.id, t.status === 'Selesai' ? 'Dijawab' : 'Selesai')}>{t.status === 'Selesai' ? 'Buka lagi' : 'Tandai selesai'}</button>}
+                {canModerateThreads && <button className="secondary xs" onClick={() => closeThread(t.id, t.status === 'Selesai' ? 'Dijawab' : 'Selesai')}>{t.status === 'Selesai' ? 'Buka lagi' : 'Tandai selesai'}</button>}
                 {isSuperAdmin && <button className="table-action danger xs" onClick={() => deleteThread(t.id)}>Hapus</button>}
               </div></td>
             </tr>)}
@@ -148,19 +151,19 @@ function ClinicPage({ currentUser, canWrite, isSuperAdmin, notify }) {
           <table>
             <thead><tr><th>Pemohon</th><th>Unit</th><th>Layanan</th><th>Tanggal</th><th>Sesi</th><th>Status</th><th>Ditangani</th><th>Aksi</th></tr></thead>
             <tbody>
-              {(isStaff ? consultations : myBookings).map(c => <tr key={c.id}>
+              {(canHandleConsultations ? consultations : myBookings).map(c => <tr key={c.id}>
                 <td>{c.user_name}</td><td>{c.user_bidang || '-'}</td><td>{c.layanan}</td>
                 <td>{c.tanggal}</td><td>{c.sesi}</td>
                 <td><span className={`status ${statusClass(c.status)}`}>{c.status}</span></td>
                 <td>{c.handled_by || '—'}</td>
                 <td><div className="row-actions">
-                  {isStaff && c.status === 'Menunggu Konfirmasi' && <button className="secondary xs" onClick={() => updateConsultation(c.id, { status: 'Dikonfirmasi', catatan: `Dikonfirmasi oleh ${currentUser.name}` })}>Konfirmasi</button>}
-                  {isStaff && c.status === 'Dikonfirmasi' && <button className="secondary xs" onClick={() => updateConsultation(c.id, { status: 'Selesai' })}>Tandai selesai</button>}
-                  {isStaff && c.status !== 'Dibatalkan' && c.status !== 'Selesai' && <button className="table-action danger xs" onClick={() => updateConsultation(c.id, { status: 'Dibatalkan' })}>Batalkan</button>}
+                  {canHandleConsultations && c.status === 'Menunggu Konfirmasi' && <button className="secondary xs" onClick={() => updateConsultation(c.id, { status: 'Dikonfirmasi', catatan: `Dikonfirmasi oleh ${currentUser.name}` })}>Konfirmasi</button>}
+                  {canHandleConsultations && c.status === 'Dikonfirmasi' && <button className="secondary xs" onClick={() => updateConsultation(c.id, { status: 'Selesai' })}>Tandai selesai</button>}
+                  {canHandleConsultations && c.status !== 'Dibatalkan' && c.status !== 'Selesai' && <button className="table-action danger xs" onClick={() => updateConsultation(c.id, { status: 'Dibatalkan' })}>Batalkan</button>}
                   {isSuperAdmin && <button className="table-action danger xs" onClick={() => deleteConsultation(c.id)}>Hapus</button>}
                 </div></td>
               </tr>)}
-              {!(isStaff ? consultations : myBookings).length && <tr><td colSpan={8} style={{ textAlign: 'center' }}>Belum ada jadwal konsultasi.</td></tr>}
+              {!(canHandleConsultations ? consultations : myBookings).length && <tr><td colSpan={8} style={{ textAlign: 'center' }}>Belum ada jadwal konsultasi.</td></tr>}
             </tbody>
           </table>
         </div>
