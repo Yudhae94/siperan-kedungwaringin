@@ -1,5 +1,7 @@
 import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
+// ===== PDF sederhana dari array of lines =====
 export function makePdfDownload(name, lines) {
   const esc = value => String(value).replace(/[\\()]/g, '\\$&')
   const content = `BT /F1 12 Tf 50 760 Td ${lines.map(line => `(${esc(line)}) Tj 0 -18 Td`).join('')} ET`
@@ -10,6 +12,8 @@ export function makePdfDownload(name, lines) {
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n `).join('\n')}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
   const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${name.replace(/\.[^.]+$/, '')}.pdf`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+// ===== Template RKA kosong (untuk unduhan) =====
 export function makeRkaTemplatePdf() {
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const pageWidth = pdf.internal.pageSize.getWidth()
@@ -60,7 +64,113 @@ export function makeRkaTemplatePdf() {
   pdf.save('Template-RKA-Manual-Kedungwaringin.pdf')
 }
 
-// ===== Konversi & hitung otomatis =====
+// ===== Ekspor PDF dari data input RKA (sesuai tampilan layar) =====
+export function exportRkaFormPdf({ title, tahun, satuan, formulir, rows, total }) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const pageWidth = doc.internal.pageSize.getWidth()
+
+  // Header judul
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  doc.text('RENCANA KERJA DAN ANGGARAN', pageWidth / 2, 12, { align: 'center' })
+  doc.setFontSize(10)
+  doc.text('SATUAN KERJA PERANGKAT DAERAH', pageWidth / 2, 18, { align: 'center' })
+
+  // Info header
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.text('PEMERINTAH KABUPATEN BEKASI', 10, 26)
+  doc.text('Tahun Anggaran: ' + (tahun || '2025'), 10, 31)
+  doc.text('Satuan: ' + (satuan || 'Kecamatan Kedungwaringin'), 10, 36)
+  doc.text('Formulir: ' + (formulir || 'RKA MANUAL - RINCIAN BELANJA SKPD'), 10, 41)
+
+  // Garis pemisah
+  doc.setLineWidth(0.5)
+  doc.line(10, 45, pageWidth - 10, 45)
+
+  // Filter baris yang memiliki data
+  const dataRows = rows.filter(r =>
+    String(r.kode || r.uraian || r.koefisien || r.harga || r.keterangan || '').trim() !== ''
+  )
+
+  // Format angka
+  const fmt = v => {
+    const n = parseNumber(v)
+    return n ? new Intl.NumberFormat('id-ID').format(Math.round(n)) : ''
+  }
+
+  // Buat data tabel
+  const tableData = dataRows.map(row => {
+    const isDetail = !isAccountRow(row)
+    return [
+      row.kode || '',
+      row.uraian || '',
+      isDetail ? (row.koefisien || '') : '',
+      isDetail ? (row.satuan || '') : '',
+      isDetail ? fmt(row.harga) : '',
+      isDetail && parseNumber(row.ppn) ? `${String(row.ppn).replace('%', '')}%` : '',
+      fmt(row.jumlah),
+      row.keterangan || ''
+    ]
+  })
+
+  // Tentukan mana yang baris header (account rows)
+  const headStyles = { fillColor: [13, 107, 88], textColor: 255, fontStyle: 'bold', fontSize: 8, halign: 'center' }
+  const bodyStyles = { fontSize: 7.5 }
+  const accountRowStyles = { fontStyle: 'bold', fillColor: [232, 245, 241], textColor: [24, 59, 53] }
+
+  // Draw table dengan autotable
+  autoTable(doc, {
+    startY: 48,
+    head: [['KODE REKENING', 'URAIAN', 'KOEFISIEN', 'SATUAN', 'HARGA SATUAN (RP)', 'PPN %', 'JUMLAH (RP)', 'KETERANGAN']],
+    body: tableData,
+    margin: { left: 10, right: 10 },
+    styles: bodyStyles,
+    headStyles: headStyles,
+    columnStyles: {
+      0: { cellWidth: 26, halign: 'center' },
+      1: { cellWidth: 65 },
+      2: { cellWidth: 18, halign: 'center' },
+      3: { cellWidth: 22, halign: 'center' },
+      4: { cellWidth: 35, halign: 'right' },
+      5: { cellWidth: 16, halign: 'center' },
+      6: { cellWidth: 38, halign: 'right', fontStyle: 'bold' },
+      7: { cellWidth: 'auto' }
+    },
+    didParseCell: (data) => {
+      // Bold untuk baris header/akun (bukan rincian)
+      if (data.section === 'body') {
+        const rowIdx = data.row.index
+        if (rowIdx < dataRows.length) {
+          const row = dataRows[rowIdx]
+          if (isAccountRow(row) && !String(row.kode || '').includes('[')) {
+            data.cell.styles = { ...data.cell.styles, ...accountRowStyles }
+          }
+        }
+      }
+    },
+    theme: 'grid'
+  })
+
+  // Total di bawah tabel
+  const finalY = doc.lastAutoTable.finalY + 8
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.text(`JUMLAH ANGGARAN SUB KEGIATAN: Rp. ${new Intl.NumberFormat('id-ID').format(Math.round(total || 0))}`, pageWidth - 12, finalY, { align: 'right' })
+
+  // Tanda tangan
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.text('Mengetahui,', pageWidth - 80, finalY + 12)
+  doc.text('Kepala Bagian Perencanaan & Keuangan', pageWidth - 80, finalY + 17)
+  doc.text('_________________________', pageWidth - 80, finalY + 30)
+  doc.text('NIP. ___________________', pageWidth - 80, finalY + 35)
+
+  // Simpan
+  doc.save(`RKA-Kedungwaringin-TA${tahun || '2025'}.pdf`)
+}
+
+// ===== Helper: parsing angka dari string =====
 export const parseNumber = value => {
   if (value === null || value === undefined) return 0
   const s = String(value).trim()
@@ -83,91 +193,3 @@ export const hitungJumlah = row => {
 
 // Tandai baris header/akun (tanpa perhitungan) vs baris rincian belanja
 export const isAccountRow = row => !parseNumber(row.koefisien) && !parseNumber(row.harga)
-
-// Ekspor PDF sesuai tampilan layar: KODE REKENING, URAIAN, KOEFISIEN, SATUAN,
-// HARGA SATUAN (RP), PPN %, JUMLAH (RP), KETERANGAN + footer total
-export function exportRkaFormPdf({ title, tahun, satuan, formulir, rows, total }) {
-  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-  const pageWidth = pdf.internal.pageSize.getWidth()
-  const pageHeight = pdf.internal.pageSize.getHeight()
-  const left = 8
-  const tableWidth = pageWidth - left * 2
-  const widths = [26, 62, 20, 22, 30, 16, 34, 40]
-  const headers = ['KODE REKENING', 'URAIAN', 'KOEFISIEN', 'SATUAN', 'HARGA SATUAN (RP)', 'PPN %', 'JUMLAH (RP)', 'KETERANGAN']
-  const fmt = v => new Intl.NumberFormat('id-ID').format(Math.round(parseNumber(v) || 0))
-  let y = 12
-
-  const drawHead = () => {
-    pdf.setTextColor(0)
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(10)
-    pdf.rect(left, y, 150, 12); pdf.rect(left + 150, y, tableWidth - 150, 12)
-    pdf.text('RINCIAN BELANJA SKPD', left + 4, y + 5)
-    pdf.text('PEMERINTAH KABUPATEN BEKASI', left + 4, y + 9)
-    pdf.text('SATUAN KERJA PERANGKAT DAERAH', left + 4, y + 12)
-    pdf.text('SATUAN', left + 150 + 20, y + 7)
-    pdf.text('FORMULIR', left + 150 + (tableWidth - 150) / 2, y + 5, { align: 'center' })
-    pdf.text('RKA MANUAL - RINCIAN BELANJA SKPD', left + 150 + (tableWidth - 150) / 2, y + 10, { align: 'center' })
-    y += 12
-    pdf.setFontSize(9); pdf.setFont('helvetica', 'bold')
-    pdf.rect(left, y, tableWidth, 7)
-    pdf.text(`PEMERINTAH KABUPATEN BEKASI TAHUN ANGGARAN ${tahun || '2025'}`, left + 4, y + 5)
-    y += 7
-    pdf.rect(left, y, tableWidth, 11)
-    pdf.text('RINCIAN ANGGARAN BELANJA KEGIATAN', left + 4, y + 5)
-    pdf.text('SATUAN KERJA PERANGKAT DAERAH', left + 4, y + 9)
-    y += 11
-    pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold')
-    let x = left
-    headers.forEach((h, i) => {
-      pdf.rect(x, y, widths[i], 10)
-      const lines = pdf.splitTextToSize(h, widths[i] - 3)
-      lines.forEach((line, li) => pdf.text(line, x + widths[i] / 2, y + 4 + li * 3.2, { align: 'center' }))
-      x += widths[i]
-    })
-    y += 10
-  }
-
-  drawHead()
-  pdf.setTextColor(0)
-  const detailRows = rows.filter(r => String(r.kode || r.uraian || r.koefisien || r.harga || r.keterangan || '').trim() !== '')
-  detailRows.forEach(row => {
-    const isDetail = !isAccountRow(row)
-    const uraianLines = pdf.splitTextToSize(String(row.uraian || ''), widths[1] - 4)
-    const ketLines = pdf.splitTextToSize(String(row.keterangan || ''), widths[7] - 4)
-    const rowHeight = Math.max(8, Math.max(uraianLines.length, ketLines.length) * 4.2 + 3.5)
-    if (y + rowHeight > pageHeight - 14) { pdf.addPage(); y = 12; drawHead() }
-    let x = left
-    const bold = isAccountRow(row) && !String(row.kode || '').includes('[')
-    pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(8)
-    const cells = [
-      String(row.kode || ''),
-      '',
-      isDetail ? String(row.koefisien || '') : '',
-      isDetail ? String(row.satuan || '') : '',
-      isDetail && parseNumber(row.harga) ? fmt(row.harga) : '',
-      isDetail && parseNumber(row.ppn) ? `${String(row.ppn).replace('%', '')}%` : '',
-      isDetail && parseNumber(row.jumlah) ? fmt(row.jumlah) : '',
-      String(row.keterangan || '')
-    ]
-    cells.forEach((cell, i) => { pdf.rect(x, y, widths[i], rowHeight); x += widths[i] })
-    pdf.text(String(cells[0]), left + 2, y + 5)
-    uraianLines.forEach((line, li) => pdf.text(String(line), left + widths[0] + 2, y + 5 + li * 4.2))
-    const rx2 = left + widths[0] + widths[1]
-    if (cells[2]) pdf.text(cells[2], rx2 + widths[2] / 2, y + 5, { align: 'center' })
-    if (cells[3]) pdf.text(cells[3], rx2 + widths[2] + widths[3] / 2, y + 5, { align: 'center' })
-    if (cells[4]) pdf.text(cells[4], rx2 + widths[2] + widths[3] + widths[4] - 2, y + 5, { align: 'right' })
-    if (cells[5]) pdf.text(cells[5], rx2 + widths[2] + widths[3] + widths[4] + widths[5] / 2, y + 5, { align: 'center' })
-    if (cells[6]) pdf.text(cells[6], rx2 + widths[2] + widths[3] + widths[4] + widths[5] + widths[6] - 2, y + 5, { align: 'right' })
-    ketLines.forEach((line, li) => pdf.text(String(line), rx2 + widths[2] + widths[3] + widths[4] + widths[5] + widths[6] + 2, y + 5 + li * 4.2))
-    y += rowHeight
-  })
-  if (y + 10 > pageHeight - 14) { pdf.addPage(); y = 12; drawHead() }
-  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8.5)
-  const totalLabelWidth = widths[0] + widths[1] + widths[2] + widths[3] + widths[4] + widths[5]
-  pdf.rect(left, y, totalLabelWidth, 9)
-  pdf.rect(left + totalLabelWidth, y, widths[6], 9)
-  pdf.rect(left + totalLabelWidth + widths[6], y, widths[7], 9)
-  pdf.text('Jumlah Anggaran Sub Kegiatan', left + totalLabelWidth - 3, y + 6, { align: 'right' })
-  pdf.text(`Rp. ${fmt(total)}`, left + totalLabelWidth + widths[6] - 2, y + 6, { align: 'right' })
-  pdf.save(`RKA-${(satuan || 'Kedungwaringin').replace(/\s+/g, '-')}-TA${tahun || '2025'}.pdf`)
-}
