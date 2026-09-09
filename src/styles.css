@@ -189,3 +189,7 @@ td small{display:block;color:var(--muted);margin-top:3px}
 .tahun-view{display:inline-flex;align-items:center;gap:8px}
 .tahun-edit{display:inline-flex;align-items:center;gap:8px}
 .tahun-edit input{padding:6px 10px;border:1px solid var(--line);border-radius:8px}
+.nav-group-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+.nav-group-toggle:hover{color:var(--ink)}
+.nav-chevron{transition:transform .2s ease;flex-shrink:0}
+.nav-chevron.open{transform:rotate(180deg)}
