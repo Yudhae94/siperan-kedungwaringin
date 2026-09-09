@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../services/api'
 import { exportRkaFormPdf, hitungJumlah, parseNumber, isAccountRow } from '../utils/pdf'
-import { Trash2, Eraser, Download, Save, Pencil, Check } from 'lucide-react'
+import { Trash2, Eraser, Download, Save, Pencil, Check, Lock } from 'lucide-react'
 
 const fmt = value => new Intl.NumberFormat('id-ID').format(parseNumber(value) || 0)
 
@@ -216,18 +216,18 @@ function RkaForm({ isSuperAdmin, canWrite }) {
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={canWrite ? 6 : 6} style={{ textAlign: 'right' }}><b>Jumlah Anggaran Sub Kegiatan</b></td>
-            <td><b>Rp. {new Intl.NumberFormat('id-ID').format(total)}</b></td>
-            <td colSpan={canWrite ? 2 : 2}></td>
+            <td colSpan={canWrite ? 6 : 5} className="rka-total-label"><b>Jumlah Anggaran Sub Kegiatan</b></td>
+            <td className="rka-total-value"><b>Rp {new Intl.NumberFormat('id-ID').format(total)}</b></td>
+            <td colSpan="2"></td>
           </tr>
         </tfoot>
       </table>
     </div>
 
     <div className="rka-actions">
-      {canWrite && <button className="primary" type="button" onClick={saveRka} disabled={saving}>{saving ? 'Menyimpan...' : <><Save size={16}/> Simpan RKA</>}</button>}
+      {!canWrite && <p className="rka-user-notice"><Lock size={14}/> Anda masuk sebagai User — hanya Admin & Super Admin yang dapat mengubah RKA.</p>}
       <button className="secondary" type="button" onClick={exportRkaPdf}><Download size={16}/> Export PDF</button>
-      {!canWrite && <p className="muted" style={{ margin: 0 }}>Anda masuk sebagai User — hanya Admin & Super Admin yang dapat mengubah RKA.</p>}
+      {canWrite && <button className="primary" type="button" onClick={saveRka} disabled={saving}>{saving ? 'Menyimpan...' : <><Save size={16}/> Simpan RKA</>}</button>}
     </div>
     {status && <p className="muted" style={{ marginTop: 12 }}>{status}</p>}
   </section>
