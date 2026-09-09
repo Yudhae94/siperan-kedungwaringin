@@ -135,17 +135,19 @@ function RkaForm({ isSuperAdmin, canWrite }) {
     </div>
 
     <div className="rka-meta">
-      <label>Tahun Anggaran:
+      <div className="rka-meta-field">
+        <span className="rka-meta-label">Tahun Anggaran</span>
         {editTahun
-          ? <span className="tahun-edit"><input value={tahun} onChange={e => setTahun(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} style={{ width: 80 }} /><button className="primary xs" type="button" onClick={() => setEditTahun(false)}>Simpan</button></span>
-          : <span className="tahun-view"><b>{tahun}</b>{canWrite && <button className="icon-btn" type="button" title="Edit tahun anggaran" onClick={() => setEditTahun(true)}><Pencil size={15}/></button>}</span>}
-      </label>
-      <label style={{ marginLeft: 16 }}>Satuan:
+          ? <span className="tahun-edit"><input className="rka-meta-input" value={tahun} onChange={e => setTahun(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} style={{ width: 80 }} /><button className="primary xs" type="button" onClick={() => setEditTahun(false)}>Simpan</button></span>
+          : <span className="tahun-view"><b>{tahun}</b>{canWrite && <button className="icon-btn" type="button" title="Edit tahun anggaran" onClick={() => setEditTahun(true)}><Pencil size={14}/></button>}</span>}
+      </div>
+      <div className="rka-meta-field">
+        <span className="rka-meta-label">Satuan</span>
         {canWrite
-          ? <input value={satuan} onChange={e => setSatuan(e.target.value)} style={{ width: 200, padding: '4px 8px', border: '1px solid var(--line)', borderRadius: 6 }} />
-          : <b style={{ marginLeft: 8 }}>{satuan}</b>
+          ? <input className="rka-meta-input" value={satuan} onChange={e => setSatuan(e.target.value)} style={{ width: 200 }} />
+          : <b>{satuan}</b>
         }
-      </label>
+      </div>
     </div>
 
     <div className="rka-sheet">
