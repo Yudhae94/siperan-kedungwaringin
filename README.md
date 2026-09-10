@@ -5,7 +5,7 @@ SIPERAN (Sistem Perencanaan dan Pelaporan Terpadu) adalah dashboard lokal untuk 
 ## Menjalankan
 
 ```powershell
-cd C:\Users\Yudhaeka12\SIPERAN-KEDUNGWARINGIN
+cd C:\path\to\siperan-kedungwaringin
 npm install
 npm run dev
 ```
@@ -29,7 +29,7 @@ Aplikasi memakai MySQL dengan konfigurasi default berikut (dapat dioverride lewa
 Catatan untuk mesin lain:
 
 - Install MySQL (atau MariaDB) terlebih dahulu, buat database `siperan` beserta user aplikasi, lalu set env di atas bila beda dari default.
-- Lokasi MySQL portable di mesin saat ini dikonfigurasi lewat `MYSQLD_PATH` dan `MYSQL_INI_PATH` (default `C:\Users\Yudhaeka12\mysql9\...`, lihat `scripts/start-mysql.js`).
+- Lokasi MySQL dapat dikonfigurasi lewat `MYSQLD_PATH` dan `MYSQL_INI_PATH`. Jika tidak diatur, launcher mendeteksi instalasi portable di folder home, XAMPP, atau MySQL Server umum di Windows.
 - Tabel dibuat dan diisi seed otomatis saat server pertama kali berjalan.
 - Untuk memindahkan data lama dari SQLite: `npm run db:migrate` (butuh file `siperan.sqlite`).
 - Uji cepat seluruh endpoint: `npm run test:smoke` (server harus berjalan; script ini memodifikasi sebagian data uji).
@@ -39,7 +39,7 @@ Catatan untuk mesin lain:
 Jika dependencies sudah terinstall di komputer ini, jalankan:
 
 ```bat
-C:\Users\Yudhaeka12\SIPERAN-KEDUNGWARINGIN\offline-run.bat
+<folder-project>\offline-run.bat
 ```
 
 File ini akan menjalankan aplikasi tanpa perlu mengunduh paket apapun dari internet.
@@ -49,7 +49,7 @@ File ini akan menjalankan aplikasi tanpa perlu mengunduh paket apapun dari inter
 Untuk membuat backup lokal project:
 
 ```bat
-C:\Users\Yudhaeka12\SIPERAN-KEDUNGWARINGIN\backup-project.bat
+<folder-project>\backup-project.bat
 ```
 
 File zip backup akan dibuat di folder `backup` di dalam project.
@@ -65,7 +65,7 @@ Project ini sudah memiliki branch utama dan backup:
 Untuk berpindah ke branch pengembangan:
 
 ```powershell
-cd C:\Users\Yudhaeka12\SIPERAN-KEDUNGWARINGIN
+cd C:\path\to\siperan-kedungwaringin
 git checkout dev
 ```
 
@@ -74,7 +74,7 @@ git checkout dev
 Buka file `SIPERAN-KEDUNGWARINGIN.code-workspace` dengan VS Code, atau jalankan:
 
 ```powershell
-code C:\Users\Yudhaeka12\SIPERAN-KEDUNGWARINGIN
+code C:\path\to\siperan-kedungwaringin
 ```
 
 Source code utama berada di folder `src`, backend ada di `server.js`, dan database SQLite ada di `siperan.sqlite`.
