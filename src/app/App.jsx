@@ -20,6 +20,7 @@ import Settings from '../views/Settings'
 import UploadPendukungPage from '../views/UploadPendukungPage'
 import UsulanRkaPage from '../views/UsulanRkaPage'
 import VerifikasiUsulanPage from '../views/VerifikasiUsulanPage'
+import '../styles.css';
 
 function App() {
   const [users, setUsers] = useState([])

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { api } from '../services/api'
-import { exportRkaFormPdf, hitungJumlah, parseNumber, isAccountRow } from '../utils/pdf'
-import { Trash2, Eraser, Download, Save, Pencil, Check, Lock } from 'lucide-react'
+import { buildRkaCetakDoc, hitungJumlah, parseNumber, isAccountRow } from '../utils/pdf'
+import { Trash2, Eraser, Download, Save, Pencil, Check, Lock, X } from 'lucide-react'
+import Modal from '../components/Modal'
 
 const fmt = value => new Intl.NumberFormat('id-ID').format(parseNumber(value) || 0)
 
@@ -23,14 +24,22 @@ function RkaForm({ isSuperAdmin, canWrite }) {
   const [tahun, setTahun] = useState('2025')
   const [editTahun, setEditTahun] = useState(false)
   const [editHeader, setEditHeader] = useState(false)
+  const [headerSnapshot, setHeaderSnapshot] = useState(null)
   const [status, setStatus] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedData, setSavedData] = useState(null)
+  const [pdfPreview, setPdfPreview] = useState(null)
 
   // Header editable state
   const [headerTitle, setHeaderTitle] = useState('RINCIAN BELANJA SKPD')
   const [headerSubtitle, setHeaderSubtitle] = useState('PEMERINTAH KABUPATEN BEKASI')
   const [headerFormulir, setHeaderFormulir] = useState('RKA MANUAL - RINCIAN BELANJA SKPD')
+  const [headerOrganizationLabel, setHeaderOrganizationLabel] = useState('SATUAN KERJA PERANGKAT DAERAH')
+  const [headerUnitLabel, setHeaderUnitLabel] = useState('SATUAN')
+  const [headerFormLabel, setHeaderFormLabel] = useState('FORMULIR')
+  const [headerYearLabel, setHeaderYearLabel] = useState('TAHUN ANGGARAN')
+  const [headerActivityTitle, setHeaderActivityTitle] = useState('RINCIAN ANGGARAN BELANJA KEGIATAN')
+  const [headerActivitySubtitle, setHeaderActivitySubtitle] = useState('SATUAN KERJA PERANGKAT DAERAH')
   const [satuan, setSatuan] = useState('Kecamatan Kedungwaringin')
 
   // Tanda tangan editable state
@@ -63,6 +72,10 @@ function RkaForm({ isSuperAdmin, canWrite }) {
       }
     }).catch(() => {})
   }, [])
+
+  useEffect(() => () => {
+    if (pdfPreview?.url) URL.revokeObjectURL(pdfPreview.url)
+  }, [pdfPreview])
 
   const deleteRow = index => {
     if (!isSuperAdmin) return
@@ -98,6 +111,37 @@ function RkaForm({ isSuperAdmin, canWrite }) {
 
   const total = computedRows.reduce((sum, row) => isAccountRow(row) ? sum : sum + (parseNumber(row.jumlah) || 0), 0)
 
+  const startHeaderEdit = () => {
+    setHeaderSnapshot({
+      headerTitle,
+      headerSubtitle,
+      headerFormulir,
+      headerOrganizationLabel,
+      headerUnitLabel,
+      headerFormLabel,
+      headerYearLabel,
+      headerActivityTitle,
+      headerActivitySubtitle
+    })
+    setEditHeader(true)
+  }
+
+  const cancelHeaderEdit = () => {
+    if (headerSnapshot) {
+      setHeaderTitle(headerSnapshot.headerTitle)
+      setHeaderSubtitle(headerSnapshot.headerSubtitle)
+      setHeaderFormulir(headerSnapshot.headerFormulir)
+      setHeaderOrganizationLabel(headerSnapshot.headerOrganizationLabel)
+      setHeaderUnitLabel(headerSnapshot.headerUnitLabel)
+      setHeaderFormLabel(headerSnapshot.headerFormLabel)
+      setHeaderYearLabel(headerSnapshot.headerYearLabel)
+      setHeaderActivityTitle(headerSnapshot.headerActivityTitle)
+      setHeaderActivitySubtitle(headerSnapshot.headerActivitySubtitle)
+    }
+    setHeaderSnapshot(null)
+    setEditHeader(false)
+  }
+
   const saveRka = () => {
     setSaving(true)
     api('/rka', { method: 'POST', body: JSON.stringify({
@@ -117,18 +161,34 @@ function RkaForm({ isSuperAdmin, canWrite }) {
     }).finally(() => setSaving(false))
   }
 
-  const exportRkaPdf = () => {
-    exportRkaFormPdf({
+  const getRkaPdfData = () => ({
+      pemerintah: headerSubtitle,
+      formulirKode: headerFormulir,
       title: headerTitle,
       tahun,
       satuan,
-      formulir: headerFormulir,
-      jabatan,
-      nama_ttd: namaTtd,
-      nip_ttd: nipTtd,
+      jabatanTtd: jabatan,
+      namaTtd,
+      nipTtd,
       rows: computedRows,
       total
     })
+
+  const previewRkaPdf = () => {
+    const doc = buildRkaCetakDoc(getRkaPdfData())
+    const url = URL.createObjectURL(doc.output('blob'))
+    setPdfPreview({
+      url,
+      filename: `RKA-Belanja-TA${tahun || ''}.pdf`
+    })
+  }
+
+  const downloadRkaPdf = () => {
+    if (!pdfPreview?.url) return
+    const anchor = document.createElement('a')
+    anchor.href = pdfPreview.url
+    anchor.download = pdfPreview.filename
+    anchor.click()
   }
 
   return <section className="card rka-card">
@@ -140,8 +200,11 @@ function RkaForm({ isSuperAdmin, canWrite }) {
       <div className="rka-head-actions">
         {canWrite && (
           editHeader
-            ? <button className="primary xs" type="button" onClick={() => setEditHeader(false)}><Check size={15}/> Simpan Header</button>
-            : <button className="secondary xs" type="button" onClick={() => setEditHeader(true)}><Pencil size={15}/> Edit Header</button>
+            ? <span className="title-actions-inline">
+                <button className="primary" type="button" onClick={() => { setHeaderSnapshot(null); setEditHeader(false) }}><Check size={15}/> Simpan Header</button>
+                <button className="secondary" type="button" onClick={cancelHeaderEdit}><X size={15}/> Batal</button>
+              </span>
+            : <button className="secondary" type="button" onClick={startHeaderEdit}><Pencil size={15}/> Edit Header</button>
         )}
         {canWrite && <button className="secondary" type="button" onClick={resetAllRows} title="Kosongkan semua baris"><Eraser size={15}/> Reset semua</button>}
         {canWrite && <button className="secondary" type="button" onClick={() => setRows(prev => [...prev, { kode: '', uraian: '', koefisien: '', satuan: '', harga: '', ppn: '', jumlah: '', keterangan: '' }])}>Tambah baris</button>}
@@ -171,25 +234,48 @@ function RkaForm({ isSuperAdmin, canWrite }) {
             <th colSpan="4" className="rka-title-cell">
               {editHeader
                 ? <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <input value={headerTitle} onChange={e => setHeaderTitle(e.target.value)} style={{ textAlign: 'center', fontWeight: 700, fontSize: 11 }} />
-                    <input value={headerSubtitle} onChange={e => setHeaderSubtitle(e.target.value)} style={{ textAlign: 'center', fontSize: 10 }} />
+                    <input value={headerTitle} onChange={e => setHeaderTitle(e.target.value)} style={{ textAlign: 'left', fontWeight: 700, fontSize: 11 }} />
+                    <input value={headerSubtitle} onChange={e => setHeaderSubtitle(e.target.value)} style={{ textAlign: 'left', fontSize: 10 }} />
+                    <input value={headerOrganizationLabel} onChange={e => setHeaderOrganizationLabel(e.target.value)} style={{ textAlign: 'left', fontSize: 10 }} />
                   </div>
-                : <div>{headerTitle}<br/>{headerSubtitle}<br/>SATUAN KERJA PERANGKAT DAERAH</div>
+                : <div>{headerTitle}<br/>{headerSubtitle}<br/>{headerOrganizationLabel}</div>
               }
             </th>
-            <th className="rka-title-cell">SATUAN</th>
+            <th className="rka-title-cell">
+              {editHeader
+                ? <input value={headerUnitLabel} onChange={e => setHeaderUnitLabel(e.target.value)} style={{ textAlign: 'left', fontWeight: 700, fontSize: 11, width: '100%' }} />
+                : headerUnitLabel}
+            </th>
             <th className="rka-title-cell" colSpan="4">
               {editHeader
-                ? <input value={headerFormulir} onChange={e => setHeaderFormulir(e.target.value)} style={{ textAlign: 'center', fontWeight: 700, fontSize: 11, width: '100%' }} />
-                : <div>FORMULIR<br/>{headerFormulir}</div>
+                ? <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <input value={headerFormLabel} onChange={e => setHeaderFormLabel(e.target.value)} style={{ textAlign: 'left', fontWeight: 700, fontSize: 11 }} />
+                    <input value={headerFormulir} onChange={e => setHeaderFormulir(e.target.value)} style={{ textAlign: 'left', fontWeight: 700, fontSize: 11 }} />
+                  </div>
+                : <div>{headerFormLabel}<br/>{headerFormulir}</div>
               }
             </th>
           </tr>
           <tr>
-            <th colSpan="9" className="rka-center">{headerSubtitle} TAHUN ANGGARAN {tahun}</th>
+            <th colSpan="9" className="rka-center">
+              {editHeader
+                ? <div style={{ display: 'flex', justifyContent: 'left', gap: 4 }}>
+                    <input value={headerSubtitle} onChange={e => setHeaderSubtitle(e.target.value)} style={{ textAlign: 'left', width: 220 }} />
+                    <input value={headerYearLabel} onChange={e => setHeaderYearLabel(e.target.value)} style={{ textAlign: 'left', width: 120 }} />
+                    <input value={tahun} readOnly style={{ textAlign: 'left', width: 60 }} />
+                  </div>
+                : <>{headerSubtitle} {headerYearLabel} {tahun}</>}
+              </th>
           </tr>
           <tr>
-            <th colSpan="9" className="rka-center">RINCIAN ANGGARAN BELANJA KEGIATAN<br/>SATUAN KERJA PERANGKAT DAERAH</th>
+            <th colSpan="9" className="rka-center">
+              {editHeader
+                ? <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <input value={headerActivityTitle} onChange={e => setHeaderActivityTitle(e.target.value)} style={{ textAlign: 'left', fontWeight: 700 }} />
+                    <input value={headerActivitySubtitle} onChange={e => setHeaderActivitySubtitle(e.target.value)} style={{ textAlign: 'left', fontWeight: 700 }} />
+                  </div>
+                : <div>{headerActivityTitle}<br/>{headerActivitySubtitle}</div>}
+              </th>
           </tr>
           <tr>
             <th>KODE REKENING</th>
@@ -271,10 +357,19 @@ function RkaForm({ isSuperAdmin, canWrite }) {
 
     <div className="rka-actions">
       {!canWrite && <p className="rka-user-notice"><Lock size={14}/> Anda masuk sebagai User — hanya Admin & Super Admin yang dapat mengubah RKA.</p>}
-      <button className="secondary" type="button" onClick={exportRkaPdf}><Download size={16}/> Export PDF</button>
+      <button className="secondary" type="button" onClick={previewRkaPdf}><Download size={16}/> Export PDF</button>
       {canWrite && <button className="primary" type="button" onClick={saveRka} disabled={saving}>{saving ? 'Menyimpan...' : <><Save size={16}/> Simpan RKA</>}</button>}
     </div>
     {status && <p className="muted" style={{ marginTop: 12 }}>{status}</p>}
+    {pdfPreview && <Modal title="Preview PDF RKA" onClose={() => setPdfPreview(null)}>
+      <div className="rka-pdf-preview">
+        <iframe title="Preview PDF RKA" src={pdfPreview.url} />
+        <div className="modal-actions">
+          <button className="secondary" type="button" onClick={() => setPdfPreview(null)}>Tutup</button>
+          <button className="primary" type="button" onClick={downloadRkaPdf}><Download size={16}/> Unduh PDF</button>
+        </div>
+      </div>
+    </Modal>}
   </section>
 }
 
