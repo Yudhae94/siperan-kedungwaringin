@@ -132,7 +132,7 @@ function App() {
     }).catch(err => notify(err.message || 'Gagal mengunggah dokumen'))
   }
   function verifyDoc(id) {
-    if (!isSuperAdmin) return
+    if (!canWrite) return
     const doc = docs.find(item => item.id === id)
     const notes = `Dokumen ditinjau oleh ${currentUser.name} (${currentUser.role}) pada ${new Date().toLocaleString('id-ID')}.`
     api(`/docs/${id}`, { method:'PATCH', body:JSON.stringify({ status:'Terverifikasi', preview: doc?.preview || 'Dokumen sudah ditinjau dan disetujui untuk proses selanjutnya.' }) })
@@ -188,7 +188,7 @@ function App() {
       .catch(error => notify(error.message || 'Gagal menghapus kegiatan'))
   }
   function approveSection(section, status) {
-    if (!isSuperAdmin) return
+    if (!canWrite) return
     const notes = status === 'Disetujui' ? 'Persetujuan diterbitkan oleh admin untuk sesi ini.' : 'Persetujuan ditolak dan perlu revisi lanjutan.'
     api(`/section-approvals/${encodeURIComponent(section)}`, { method:'PATCH', body: JSON.stringify({ status, notes }) }).then(updated => {
       setApprovalBoard(list => list.map(item => item.section === section ? { ...item, ...updated } : item))

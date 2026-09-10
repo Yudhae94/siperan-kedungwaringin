@@ -760,13 +760,13 @@ app.post('/api/docs', auth, write, upload.single('file'), (req, res) => {
   res.status(201).json({ ...created, review_log: [] })
 })
 
-app.patch('/api/docs/:id', auth, superAdminOnly, (req, res) => {
+app.patch('/api/docs/:id', auth, write, (req, res) => {
   const b = req.body
   db.prepare('UPDATE docs SET status=?, preview=? WHERE id=?').run(b.status || 'Terverifikasi', b.preview || 'Dokumen sudah ditinjau dan siap ditindaklanjuti.', req.params.id)
   res.json({ ok: true })
 })
 
-app.post('/api/docs/:id/review', auth, superAdminOnly, (req, res) => {
+app.post('/api/docs/:id/review', auth, write, (req, res) => {
   const { reviewer, action, notes } = req.body || {}
   const payload = {
     reviewer: reviewer || req.session.user.name,
@@ -792,7 +792,7 @@ app.delete('/api/docs/:id', auth, superAdminOnly, (req, res) => {
 
 app.get('/api/doc-reviews', auth, (req, res) => res.json(db.prepare('SELECT * FROM doc_reviews ORDER BY id DESC').all()))
 app.get('/api/section-approvals', auth, (req, res) => res.json(db.prepare('SELECT * FROM section_approvals ORDER BY id').all()))
-app.patch('/api/section-approvals/:section', auth, superAdminOnly, (req, res) => {
+app.patch('/api/section-approvals/:section', auth, write, (req, res) => {
   const section = decodeURIComponent(req.params.section)
   const { status, notes } = req.body || {}
   if (!status) return res.status(400).json({ error: 'Status persetujuan wajib diisi.' })
