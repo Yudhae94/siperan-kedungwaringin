@@ -100,7 +100,7 @@ export function saveEvaluationEntry(db, body, user) {
   return db.prepare('SELECT * FROM evaluation_entries WHERE program_id=? AND periode=?').get(program.id, body.periode)
 }
 
-export function registerEvaluation(app, db, auth, write) {
+export function registerEvaluation(app, db, auth, write, superAdminOnly) {
   migrateEvaluation(db)
   const route = handler => (req, res, next) => {
     try { handler(req, res) } catch (error) { if (error.status === 400) res.status(400).json({ error: error.message }); else next(error) }
@@ -114,7 +114,7 @@ export function registerEvaluation(app, db, auth, write) {
     if (!row) return res.status(404).json({ error: 'Arsip tidak ditemukan.' })
     res.json({ ...row, snapshot: JSON.parse(row.snapshot) })
   }))
-  app.delete('/api/evaluation/archives/:id', auth, write, route((req, res) => {
+  app.delete('/api/evaluation/archives/:id', auth, superAdminOnly, route((req, res) => {
     const result = db.prepare('DELETE FROM evaluation_reports WHERE id=?').run(req.params.id)
     if (!result.changes) return res.status(404).json({ error: 'Arsip tidak ditemukan.' })
     res.json({ ok: true })

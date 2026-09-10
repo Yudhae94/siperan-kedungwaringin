@@ -657,7 +657,7 @@ app.patch('/api/programs/:id', auth, write, (req, res) => {
   db.prepare('UPDATE programs SET nama=?,bidang=?,target=?,realisasi=?,pagu=?,status=?,penanggung=?,deadline=? WHERE id=?').run(n.nama, n.bidang, n.target, n.realisasi, n.pagu, n.status, n.penanggung, n.deadline, n.id)
   res.json(n)
 })
-app.delete('/api/programs/:id', auth, write, (req, res) => {
+app.delete('/api/programs/:id', auth, superAdminOnly, (req, res) => {
   db.prepare('DELETE FROM programs WHERE id=?').run(req.params.id)
   res.json({ ok: true })
 })
@@ -760,13 +760,13 @@ app.post('/api/docs', auth, write, upload.single('file'), (req, res) => {
   res.status(201).json({ ...created, review_log: [] })
 })
 
-app.patch('/api/docs/:id', auth, write, (req, res) => {
+app.patch('/api/docs/:id', auth, superAdminOnly, (req, res) => {
   const b = req.body
   db.prepare('UPDATE docs SET status=?, preview=? WHERE id=?').run(b.status || 'Terverifikasi', b.preview || 'Dokumen sudah ditinjau dan siap ditindaklanjuti.', req.params.id)
   res.json({ ok: true })
 })
 
-app.post('/api/docs/:id/review', auth, write, (req, res) => {
+app.post('/api/docs/:id/review', auth, superAdminOnly, (req, res) => {
   const { reviewer, action, notes } = req.body || {}
   const payload = {
     reviewer: reviewer || req.session.user.name,
@@ -792,7 +792,7 @@ app.delete('/api/docs/:id', auth, superAdminOnly, (req, res) => {
 
 app.get('/api/doc-reviews', auth, (req, res) => res.json(db.prepare('SELECT * FROM doc_reviews ORDER BY id DESC').all()))
 app.get('/api/section-approvals', auth, (req, res) => res.json(db.prepare('SELECT * FROM section_approvals ORDER BY id').all()))
-app.patch('/api/section-approvals/:section', auth, write, (req, res) => {
+app.patch('/api/section-approvals/:section', auth, superAdminOnly, (req, res) => {
   const section = decodeURIComponent(req.params.section)
   const { status, notes } = req.body || {}
   if (!status) return res.status(400).json({ error: 'Status persetujuan wajib diisi.' })
@@ -1162,7 +1162,7 @@ app.get('/api/uploads/:filename', auth, (req, res) => {
   res.sendFile(filePath)
 })
 
-registerEvaluation(app, db, auth, write)
+registerEvaluation(app, db, auth, write, superAdminOnly)
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan.' }))
 app.use(express.static(path.join(__dirname, 'dist')))
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')))

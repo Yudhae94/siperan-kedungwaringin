@@ -88,7 +88,7 @@ Source code utama berada di folder `src`, backend ada di `server.js`, dan databa
 - Evaluasi kinerja, kepatuhan pelaporan, kalender agenda, dan ekspor berkas ringkas.
 - Mode peran Admin, PPTK/Kasi, dan Camat/Sekcam.
 - Login multi-peran User, Admin, dan Super Admin dengan pencatatan SIGN_IN/SIGN_OUT.
-- Hak akses: User hanya melihat data; Admin dapat tambah, edit, update, hapus, dan verifikasi; Super Admin memiliki akses penuh serta melihat manajemen pengguna.
+- Hak akses: **User** hanya melihat data; **Admin** hanya dapat input (tambah) dan update (edit); **Super Admin** memiliki akses penuh (termasuk hapus, verifikasi dokumen, dan persetujuan) serta manajemen pengguna.
 - Data disimpan di MySQL (database `siperan`); tabel dibuat dan diisi otomatis saat server pertama kali berjalan.
 
 ## Upload dokumen lokal

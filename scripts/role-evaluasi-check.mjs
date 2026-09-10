@@ -1,4 +1,4 @@
-// Uji cepat perbaikan role evaluasi/dokumen: Admin boleh verifikasi+setujui, User tetap 403.
+// Uji model hak akses: Admin = input+update saja, User = lihat saja, Super Admin = semua.
 const BASE = 'http://localhost:3001'
 let cookie = ''
 const req = async (method, path, body) => {
@@ -23,38 +23,47 @@ const login = async (username, password) => {
 let fail = 0
 const check = (n, c, e = '') => { console.log((c ? 'PASS ' : 'FAIL ') + n, c ? '' : e); if (!c) fail++ }
 
+// ===== ADMIN: input & update boleh, hapus/persetujuan/verifikasi diblok =====
 let r = await login('admin', 'admin123')
 check('login admin', r.status === 200 && r.json?.role === 'Admin', JSON.stringify(r.json))
 
-// Verifikasi dokumen pertama yang belum terverifikasi, lalu kembalikan
-const docs = await req('GET', '/api/docs')
-const doc = docs.json.find(d => d.status !== 'Terverifikasi') || docs.json[0]
-const origStatus = doc.status
-r = await req('PATCH', `/api/docs/${doc.id}`, { status: 'Terverifikasi', preview: 'uji role admin' })
-check(`Admin PATCH /docs/${doc.id} (verifikasi)`, r.status === 200, `status=${r.status}`)
-r = await req('POST', `/api/docs/${doc.id}/review`, { reviewer: 'Admin Uji', action: 'Terverifikasi', notes: 'uji role' })
-check('Admin POST /docs/:id/review', r.status === 201, `status=${r.status}`)
-// Kembalikan status dokumen seperti semula & hapus jejak review uji
-await req('PATCH', `/api/docs/${doc.id}`, { status: origStatus, preview: doc.preview })
-const mysql = await import('mysql2/promise')
-const conn = await mysql.createConnection({ host: '127.0.0.1', user: 'siperan', password: 'siperan123', database: 'siperan' })
-await conn.query("DELETE FROM doc_reviews WHERE reviewer = 'Admin Uji'")
-await conn.end()
+r = await req('POST', '/api/programs', { nama: 'Uji Akses Admin', bidang: 'Kasi PMD', target: 1, pagu: 1, penanggung: 'QA', deadline: '2026-12-31' })
+const progId = r.json?.id
+check('Admin POST programs (input) => 200', r.status === 200 && progId, `status=${r.status}`)
+r = await req('PATCH', `/api/programs/${progId}`, { nama: 'Uji Akses Admin v2' })
+check('Admin PATCH programs (update) => 200', r.status === 200, `status=${r.status}`)
+r = await req('DELETE', `/api/programs/${progId}`)
+check('Admin DELETE programs => 403', r.status === 403, `status=${r.status}`)
 
-// Persetujuan seksi: set lalu kembalikan nilai asli
 const sections = await req('GET', '/api/section-approvals')
 const sec = sections.json[0]
-const origSec = { status: sec.status, notes: sec.notes }
-r = await req('PATCH', `/api/section-approvals/${encodeURIComponent(sec.section)}`, { status: 'Disetujui', notes: 'uji role admin' })
-check(`Admin PATCH section-approvals (${sec.section})`, r.status === 200, `status=${r.status}`)
-r = await req('PATCH', `/api/section-approvals/${encodeURIComponent(sec.section)}`, origSec)
-check('kembalikan nilai asli seksi', r.status === 200)
+r = await req('PATCH', `/api/section-approvals/${encodeURIComponent(sec.section)}`, { status: 'Disetujui' })
+check('Admin PATCH section-approvals => 403', r.status === 403, `status=${r.status}`)
 
-// User harus tetap diblok (403) di semua aksi tulis
+const docs = await req('GET', '/api/docs')
+const doc = docs.json[0]
+r = await req('PATCH', `/api/docs/${doc.id}`, { status: 'Terverifikasi' })
+check('Admin PATCH docs (verifikasi) => 403', r.status === 403, `status=${r.status}`)
+
+// ===== SUPER ADMIN: semuanya boleh =====
+r = await login('superadmin', 'superadmin123')
+check('login superadmin', r.status === 200 && r.json?.role === 'Super Admin')
+r = await req('PATCH', `/api/section-approvals/${encodeURIComponent(sec.section)}`, { status: sec.status, notes: sec.notes })
+check('SuperAdmin PATCH section-approvals => 200', r.status === 200, `status=${r.status}`)
+r = await req('PATCH', `/api/docs/${doc.id}`, { status: doc.status, preview: doc.preview })
+check('SuperAdmin PATCH docs => 200', r.status === 200, `status=${r.status}`)
+r = await req('DELETE', `/api/programs/${progId}`)
+check('SuperAdmin DELETE programs => 200', r.status === 200, `status=${r.status}`)
+
+// ===== USER: hanya lihat =====
 r = await login('user', 'user123')
 check('login user', r.status === 200 && r.json?.role === 'User')
-r = await req('PATCH', `/api/docs/${doc.id}`, { status: 'Terverifikasi' })
-check('User PATCH docs => 403', r.status === 403, `status=${r.status}`)
+r = await req('POST', '/api/programs', { nama: 'X', bidang: 'Kasi PMD', target: 1, pagu: 1 })
+check('User POST programs => 403', r.status === 403, `status=${r.status}`)
+r = await req('PATCH', `/api/programs/${doc.id}`, { nama: 'X' })
+check('User PATCH programs => 403', r.status === 403, `status=${r.status}`)
+r = await req('DELETE', `/api/programs/${doc.id}`)
+check('User DELETE programs => 403', r.status === 403, `status=${r.status}`)
 r = await req('PATCH', `/api/section-approvals/${encodeURIComponent(sec.section)}`, { status: 'Disetujui' })
 check('User PATCH section-approvals => 403', r.status === 403, `status=${r.status}`)
 
