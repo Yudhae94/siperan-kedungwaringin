@@ -36,7 +36,7 @@ export function migrateClinic(db) {
     user_name TEXT NOT NULL,
     user_bidang TEXT NOT NULL DEFAULT '',
     layanan TEXT NOT NULL,
-    tanggal TEXT NOT NULL,
+    tanggal VARCHAR(64) NOT NULL,
     sesi TEXT NOT NULL,
     agenda TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'Menunggu Konfirmasi',

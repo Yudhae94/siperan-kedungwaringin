@@ -3,7 +3,7 @@ export function migrateEvaluation(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS evaluation_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     program_id INTEGER NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
-    periode TEXT NOT NULL CHECK(periode GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'),
+    periode VARCHAR(32) NOT NULL CHECK(periode GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'),
     target_anggaran REAL NOT NULL CHECK(target_anggaran BETWEEN 0 AND 100),
     target_fisik REAL NOT NULL CHECK(target_fisik BETWEEN 0 AND 100),
     realisasi_fisik REAL NOT NULL CHECK(realisasi_fisik BETWEEN 0 AND 100),
@@ -20,7 +20,7 @@ export function migrateEvaluation(db) {
   CREATE INDEX IF NOT EXISTS evaluation_period_idx ON evaluation_entries(periode, program_id);
   CREATE TABLE IF NOT EXISTS evaluation_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    jenis TEXT NOT NULL, periode TEXT NOT NULL, bidang TEXT NOT NULL,
+    jenis VARCHAR(64) NOT NULL, periode VARCHAR(32) NOT NULL, bidang TEXT NOT NULL,
     snapshot TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS evaluation_archive_idx ON evaluation_reports(periode, jenis);
@@ -94,8 +94,8 @@ export function saveEvaluationEntry(db, body, user) {
   if (values.realisasi_fisik < values.target_fisik && !values.kendala) fail('Alasan kendala wajib diisi untuk realisasi di bawah target.')
   if (values.kendala && !values.tindak_lanjut) fail('Tindak lanjut wajib diisi jika ada kendala.')
   const fields = [...numeric, ...texts, 'updated_by', 'updated_at']
-  db.prepare(`INSERT INTO evaluation_entries (program_id,periode,${fields.join(',')}) VALUES (${Array(fields.length + 2).fill('?').join(',')})
-    ON CONFLICT(program_id,periode) DO UPDATE SET ${fields.map(f => `${f}=excluded.${f}`).join(',')}`)
+  db.prepare(`INSERT INTO evaluation_entries (program_id,periode,${fields.join(',')}) VALUES (${Array(fields.length + 2).fill('?').join(',')}) AS new_row
+    ON DUPLICATE KEY UPDATE ${fields.map(f => `${f}=new_row.${f}`).join(',')}`)
     .run(program.id, body.periode, ...numeric.map(f => values[f]), ...texts.map(f => values[f]), user, new Date().toISOString())
   return db.prepare('SELECT * FROM evaluation_entries WHERE program_id=? AND periode=?').get(program.id, body.periode)
 }

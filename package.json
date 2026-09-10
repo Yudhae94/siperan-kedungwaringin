@@ -4,10 +4,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"node server.js\" \"vite --host 0.0.0.0\"",
+    "dev": "node scripts/start-mysql.js && concurrently \"node server.js\" \"vite --host 0.0.0.0\"",
+    "dev:server": "node server.js",
     "start": "node server.js",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "db:migrate": "node scripts/migrate-sqlite-to-mysql.mjs",
+    "test:smoke": "node scripts/smoke-test-mysql.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -19,6 +22,7 @@
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.468.0",
     "multer": "^2.3.0",
+    "mysql2": "^3.24.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "vite": "^6.0.7"

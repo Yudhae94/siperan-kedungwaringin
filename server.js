@@ -4,7 +4,7 @@ import multer from 'multer'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DatabaseSync } from 'node:sqlite'
+import { openMysqlDb, bootstrapMysqlOnly } from './server/db.js'
 import crypto from 'node:crypto'
 import { registerEvaluation } from './server/evaluation.js'
 import { registerClinic } from './server/clinic.js'
@@ -13,8 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const uploadsDir = path.join(__dirname, 'uploads')
 fs.mkdirSync(uploadsDir, { recursive: true })
 
-const db = new DatabaseSync(process.env.SIPERAN_DB || path.join(__dirname, 'siperan.sqlite'))
-db.exec('PRAGMA journal_mode = WAL')
+const db = openMysqlDb()
 db.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS programs (id INTEGER PRIMARY KEY, kode TEXT UNIQUE NOT NULL, nama TEXT NOT NULL, bidang TEXT, target REAL NOT NULL, realisasi REAL NOT NULL DEFAULT 0, pagu REAL NOT NULL DEFAULT 0, status TEXT NOT NULL, penanggung TEXT, deadline TEXT);
 CREATE TABLE IF NOT EXISTS docs (id INTEGER PRIMARY KEY, name TEXT NOT NULL, type TEXT, size TEXT, date TEXT, status TEXT NOT NULL, preview TEXT, file_path TEXT, mime_type TEXT, storage_name TEXT);
@@ -214,7 +213,7 @@ const seed = () => {
     c.run('email', 'admin.siperan@kedungwaringin.go.id')
   }
 
-  if (!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='usulan_rka'").get()) {
+  if (!db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'usulan_rka'").get()) {
     db.exec(`CREATE TABLE usulan_rka (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       judul TEXT NOT NULL,
@@ -441,7 +440,7 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ error: 'Username dan password wajib diisi.' })
   }
 
-  const u = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username)
+  const u = db.prepare('SELECT * FROM users WHERE username = ?').get(String(username).toLowerCase())
   if (!u || !verifyPassword(password, u.password)) {
     req.loginAttemptLog?.(false, 'INVALID_CREDENTIALS')
     return res.status(401).json({ error: 'Username atau password tidak sesuai.' })
@@ -496,7 +495,7 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(400).json({ error: 'Password wajib minimal 6 karakter.' })
   }
 
-  const existing = db.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE').get(username)
+  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username)
   if (existing) {
     return res.status(400).json({ error: 'Username sudah digunakan. Silakan pilih username lain.' })
   }
@@ -633,7 +632,7 @@ app.post('/api/programs', auth, write, (req, res) => {
   const bidang = normalizeBidang(b.bidang)
   let kode = String(b.kode || '').trim()
   if (!kode) {
-    const maxNum = db.prepare("SELECT MAX(CAST(SUBSTR(kode, 5) AS INTEGER)) m FROM programs WHERE kode LIKE 'PRG-%'").get().m || 0
+    const maxNum = db.prepare("SELECT MAX(CAST(SUBSTRING(kode, 5) AS SIGNED)) m FROM programs WHERE kode LIKE 'PRG-%'").get().m || 0
     let candidate = maxNum + 1
     while (db.prepare('SELECT 1 FROM programs WHERE kode = ?').get(`PRG-${String(candidate).padStart(3, '0')}`)) candidate += 1
     kode = `PRG-${String(candidate).padStart(3, '0')}`
@@ -1188,6 +1187,8 @@ const getAvailablePort = async (startPort) => {
 
 const requestedPort = Number(process.env.PORT || 3001)
 const port = requestedPort
+// Trigger MySQL (pengganti trigger SQLite untuk e_usulan_kegiatan & evaluasi)
+bootstrapMysqlOnly(db)
 // Handler error (termasuk penolakan tipe berkas dari multer)
 app.use((err, _req, res, _next) => {
   if (err instanceof multer.MulterError) {
