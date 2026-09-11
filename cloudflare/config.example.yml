@@ -1,0 +1,12 @@
+# Contoh konfigurasi cloudflared Named Tunnel (permanen + domain sendiri).
+# Salin file ini menjadi config.yml di mesin server dan isi TUNNEL_ID + CREDENTIALS_FILE
+# dari hasil perintah: cloudflared tunnel create siperan
+tunnel: TUNNEL_ID_ANDA
+credentials-file: C:\Users\Yudhaeka12\.cloudflared\TUNNEL_ID_ANDA.json
+
+ingress:
+  # Semua request ke hostname diarahkan ke aplikasi lokal (Express melayani API + dist/)
+  - hostname: siperan.contoh.go.id
+    service: http://localhost:3001
+  # Tolak request ke hostname lain yang masuk lewat tunnel ini
+  - service: http_status:404
