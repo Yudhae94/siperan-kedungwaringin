@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "db:migrate": "node scripts/migrate-sqlite-to-mysql.mjs",
+    "db:reset": "node scripts/reset-database.mjs",
     "test:smoke": "node scripts/smoke-test-mysql.mjs"
   },
   "dependencies": {
