@@ -132,6 +132,12 @@ function Login({ users, onLogin }) {
               />
             </label>
             {error && <p className="login-error">{error}</p>}
+            {error === 'CAPTCHA gagal dimuat.' && (
+              <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+                Backend (/api) tidak terjangkau dari Worker ini. Cek variabel API_ORIGIN
+                di dashboard Cloudflare dan pastikan tunnel/server Express berjalan.
+              </p>
+            )}
             <button className="primary full" type="submit" disabled={loading}>
               <LogIn size={17} /> {loading ? 'Memproses...' : 'Masuk ke aplikasi'}
             </button>

@@ -1,0 +1,14 @@
+name = "siperan-kedungwaringin"
+main = "worker.js"
+compatibility_date = "2025-08-01"
+
+# Frontend statis dari hasil `npm run build` (folder dist/).
+# Aplikasi SPA: route selain /api/* dikembalikan ke index.html.
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+# Variabel wajib di dashboard Cloudflare (Workers -> Settings -> Variables):
+#   API_ORIGIN = URL backend Express yang öffentlich, mis. https://xxxxx.trycloudflare.com
+#   (tanpa garis miring di akhir). Semua request /api/* diteruskan ke sana.
+# Opsional: API_TIMEOUT_MS (default 25000).
