@@ -16,7 +16,7 @@ export const defaultAdminContacts = [
 ]
 export const defaultApprovalBoard = [
  { id: 1, section: 'Sekretariat', status: 'Belum disetujui', notes: 'Menunggu review administrasi umum' },
- { id: 2, section: 'Pemantib', status: 'Belum disetujui', notes: 'Menunggu evaluasi program dan anggaran' },
+ { id: 2, section: 'Pemtantrib', status: 'Belum disetujui', notes: 'Menunggu evaluasi program dan anggaran' },
  { id: 3, section: 'PMD', status: 'Belum disetujui', notes: 'Perlu konfirmasi output pemberdayaan' },
  { id: 4, section: 'Pelayanan Publik', status: 'Belum disetujui', notes: 'Tunggu validasi indikator layanan' },
  { id: 5, section: 'Kessos', status: 'Belum disetujui', notes: 'Menunggu review kebutuhan sosial' },

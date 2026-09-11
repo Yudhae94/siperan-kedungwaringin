@@ -283,7 +283,7 @@ const seed = () => {
     const s = db.prepare('INSERT INTO section_approvals (section,status,notes,updated_at) VALUES (?,?,?,?)')
     const sections = [
       ['Sekretariat', 'Belum disetujui', 'Menunggu review administrasi umum', new Date().toISOString()],
-      ['Pemantib', 'Belum disetujui', 'Menunggu evaluasi program dan anggaran', new Date().toISOString()],
+      ['Pemtantrib', 'Belum disetujui', 'Menunggu evaluasi program dan anggaran', new Date().toISOString()],
       ['PMD', 'Belum disetujui', 'Perlu konfirmasi output pemberdayaan', new Date().toISOString()],
       ['Pelayanan Publik', 'Belum disetujui', 'Tunggu validasi indikator layanan', new Date().toISOString()],
       ['Kessos', 'Belum disetujui', 'Menunggu review kebutuhan sosial', new Date().toISOString()]

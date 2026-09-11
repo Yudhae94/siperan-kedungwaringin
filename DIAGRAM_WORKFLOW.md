@@ -232,9 +232,9 @@ block-beta
     sekretariat --> S_Status["✅ Disetujui"]
     sekretariat --> S_Aksi["Setujui | Tolak"]
 
-    block:pemantib["Pemantib"]:3
-    pemantib --> P_Status["❌ Belum"]
-    pemantib --> P_Aksi["Setujui | Tolak"]
+    block:pemtantrib["Pemtantrib"]:3
+    pemtantrib --> P_Status["❌ Belum"]
+    pemtantrib --> P_Aksi["Setujui | Tolak"]
 
     block:pmd["PMD"]:3
     pmd --> PMD_Status["❌ Belum"]
