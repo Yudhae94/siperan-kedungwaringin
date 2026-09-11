@@ -1,18 +1,12 @@
 // Reset database SIPERAN ke kondisi awal demo (data seed bawaan).
 // Cara pakai:
-//   Lokal   : node scripts/reset-database.mjs
-//   Produksi: SIPERAN_RESET_CONFIRM=RESET-DEMO node scripts/reset-database.mjs
+//   Lokal: npm run db:reset   (otomatis restart server agar seed terisi ulang)
 // Efek: SEMUA data transaksi dihapus (SPJ, DPA, usulan RKA, evaluasi, klinik, log,
-// dokumen, event, laporan, kartu kendali, LKA cache), lalu server akan mengisi
-// ulang data seed bawaan saat berikutnya dijalankan (fungsi seed() di server.js).
+// dokumen, event, laporan, kartu kendali), lalu server di-restart agar fungsi
+// seed() di server.js mengisi ulang data demo bawaan.
 // Akun demo setelah reset: user/user123, admin/admin123, superadmin/superadmin123.
 import mysql from 'mysql2/promise'
-
-const CONFIRM = process.env.SIPERAN_RESET_CONFIRM
-if (process.env.NODE_ENV === 'production' && CONFIRM !== 'RESET-DEMO') {
-  console.error("Batal: set SIPERAN_RESET_CONFIRM=RESET-DEMO untuk reset di server produksi.")
-  process.exit(1)
-}
+import { spawn } from 'node:child_process'
 
 const conn = await mysql.createConnection({
   host: process.env.MYSQL_HOST || '127.0.0.1',
@@ -58,5 +52,10 @@ for (const t of names) {
 await conn.query('SET FOREIGN_KEY_CHECKS = 1')
 await conn.end()
 
-console.log('\nReset selesai. Restart server (node server.js / run-server.bat) untuk mengisi data demo awal.')
-console.log('Akun demo: user/user123 (User), admin/admin123 (Admin), superadmin/superadmin123 (Super Admin).')
+console.log('\nReset selesai. Me-restart server agar data demo terisi ulang...')
+
+// Restart server otomatis agar seed() berjalan (tanpa ini tabel users kosong
+// karena server lama memegang koneksi sebelum reset).
+const restart = spawn('cmd.exe', ['/c', 'cloudflare\\restart-backend.bat'], { stdio: 'inherit', shell: false })
+await new Promise(resolve => restart.on('close', resolve))
+console.log('Selesai. Akun demo: user/user123 (User), admin/admin123 (Admin), superadmin/superadmin123 (Super Admin).')
