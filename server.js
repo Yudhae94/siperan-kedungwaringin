@@ -156,11 +156,10 @@ const seed = () => {
     u.run(1, 'user', hashPassword('user123'), 'Pengguna SIPERAN', 'User', 'Kasi Pelayanan Publik', 'Aktif', now)
     u.run(2, 'admin', hashPassword('admin123'), 'Admin', 'Admin', 'Sekretariat - Bagian Perencanaan dan Keuangan', 'Aktif', now)
     u.run(3, 'superadmin', hashPassword('superadmin123'), 'Super Admin', 'Super Admin', 'Sekretariat - Bagian Umum dan Kepegawaian', 'Aktif', now)
-    u.run(4, 'pptk', hashPassword('pptk123'), 'PPTK Kecamatan', 'PPTK', 'Kasi Ekonomi dan Pembangunan', 'Aktif', now)
-    u.run(5, 'camat', hashPassword('camat123'), 'Camat Kedungwaringin', 'Camat', 'Camat', 'Aktif', now)
-    u.run(6, 'sekcam', hashPassword('sekcam123'), 'Sekretaris Camat', 'Sekcam', 'Sekretariat - Bagian Umum dan Kepegawaian', 'Aktif', now)
   } else {
     db.prepare("UPDATE users SET name = 'Admin' WHERE username = 'admin' AND name <> 'Admin'").run()
+    // Konsolidasi role lama (PPTK/Camat/Sekcam) ke Super Admin
+    db.prepare("UPDATE users SET role = 'Super Admin' WHERE role IN ('PPTK','Camat','Sekcam')").run()
     for (const [uname, pass] of [['user', 'user123'], ['admin', 'admin123'], ['superadmin', 'superadmin123']]) {
       const userRec = db.prepare('SELECT id, password, status, bidang FROM users WHERE username = ?').get(uname)
       if (userRec) {
@@ -546,7 +545,7 @@ app.patch('/api/users/:id', auth, superAdminOnly, (req, res) => {
   if (!target) return res.status(404).json({ error: 'Pengguna tidak ditemukan.' })
 
   const { name, role, status, bidang, email } = req.body || {}
-  const validRoles = ['User', 'Admin', 'Super Admin', 'PPTK', 'Camat', 'Sekcam']
+  const validRoles = ['User', 'Admin', 'Super Admin']
   const validStatuses = ['Aktif', 'Nonaktif']
 
   if (role && !validRoles.includes(role)) {
@@ -955,8 +954,8 @@ app.get('/api/spj', auth, (req, res) => {
 })
 
 app.post('/api/spj', auth, (req, res, next) => {
-  if (!['PPTK', 'Admin', 'Super Admin'].includes(req.session.user.role)) {
-    return res.status(403).json({ error: 'Input SPJ & progres hanya dapat dilakukan oleh PPTK atau Admin Subag Perencanaan & Keuangan.' })
+  if (!['Admin', 'Super Admin'].includes(req.session.user.role)) {
+    return res.status(403).json({ error: 'Input SPJ & progres hanya dapat dilakukan oleh Admin atau Super Admin.' })
   }
   next()
 }, upload.single('file'), (req, res) => {
@@ -1002,8 +1001,8 @@ app.patch('/api/spj/:id', auth, (req, res) => {
   if (!row) return res.status(404).json({ error: 'Data SPJ tidak ditemukan.' })
   const b = req.body || {}
   const role = req.session.user.role
-  const canInputProgress = ['PPTK', 'Admin', 'Super Admin'].includes(role)
-  // ==== Validasi perubahan data (bukan status): hanya PPTK/Admin/Super Admin ====
+  const canInputProgress = ['Admin', 'Super Admin'].includes(role)
+  // ==== Validasi perubahan data (bukan status): hanya Admin/Super Admin ====
   const hasDataChange = ['nilai_pencairan', 'progres_fisik', 'progres_keuangan', 'catatan'].some(k => b[k] !== undefined)
   if (hasDataChange && !canInputProgress) {
     return res.status(403).json({ error: 'Hanya PPTK atau Admin yang dapat memperbarui data progres SPJ.' })
@@ -1018,7 +1017,7 @@ app.patch('/api/spj/:id', auth, (req, res) => {
     const to = SPJ_STAGES.indexOf(b.status)
     const isSuperAdmin = role === 'Super Admin'
     const isAdmin = role === 'Admin' || isSuperAdmin
-    const isSigner = ['Camat', 'Sekcam', 'Admin', 'Super Admin'].includes(role)
+    const isSigner = isAdmin // Penandatanganan kini milik Admin/Super Admin
     let allowed = false
     if (isSuperAdmin) {
       allowed = true // Super Admin dapat memindahkan ke tahap mana pun

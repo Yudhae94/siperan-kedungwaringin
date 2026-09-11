@@ -21,7 +21,7 @@ function ClinicPage({ currentUser, canWrite, isSuperAdmin, notify }) {
   // Harus sinkron dengan backend: canModerate = Super Admin/Admin (status thread),
   // canApprove + canModerate = Super Admin/Admin/Camat/Sekcam (jadwal konsultasi).
   const canModerateThreads = ['Super Admin', 'Admin'].includes(currentUser.role)
-  const canHandleConsultations = ['Super Admin', 'Admin', 'Camat', 'Sekcam'].includes(currentUser.role)
+  const canHandleConsultations = ['Super Admin', 'Admin'].includes(currentUser.role)
   const canManageTemplates = isSuperAdmin
 
   const loadAll = () => {

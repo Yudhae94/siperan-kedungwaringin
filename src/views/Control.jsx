@@ -8,13 +8,13 @@ import { pct, rupiah } from '../utils/format'
 const SPJ_STAGES = ['Review Subag Perencanaan & Keuangan', 'Penandatanganan Camat / Sekcam', 'Tahap Pencairan', 'Selesai Dicairkan']
 
 function Control({ programs, setPrograms, onUpload, canWrite, notify, spjList, setSpjList, lkaData, setLkaData, kartuList, setKartuList, dpaList, setDpaList, usulanRka, isSuperAdmin, role }) {
-  // ==== Pemetaan role sesuai spesifikasi ====
-  // Input Progres Fisik & Keuangan (SPJ): PPTK (+ Admin Subag & Super Admin)
-  const canInputSpj = ['PPTK', 'Admin', 'Super Admin'].includes(role)
+  // ==== Pemetaan role (PPTK/Camat/Sekcam digabung ke Admin/Super Admin) ====
+  // Input Progres Fisik & Keuangan (SPJ) + review + penandatanganan: Admin & Super Admin
+  const canInputSpj = ['Admin', 'Super Admin'].includes(role)
   // Review SPJ (tahap 0->1 dan 2->3): Admin Subag Perencanaan & Keuangan (+ Super Admin)
   const canReviewSpj = ['Admin', 'Super Admin'].includes(role)
-  // Penandatanganan (tahap 1->2): Camat/Sekcam (+ Admin & Super Admin)
-  const canSignSpj = ['Camat', 'Sekcam', 'Admin', 'Super Admin'].includes(role)
+  // Penandatanganan (tahap 1->2): Admin & Super Admin
+  const canSignSpj = ['Admin', 'Super Admin'].includes(role)
   const [tab, setTab] = useState('lka')
   const [selected, setSelected] = useState(programs[0]?.id)
   const current = programs.find(p => p.id === selected) || programs[0]

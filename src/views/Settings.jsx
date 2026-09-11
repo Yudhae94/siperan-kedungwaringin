@@ -252,9 +252,6 @@ function Settings({ currentUser, users, setUsers, authLog, adminContacts, setAdm
                         <option value="User">User</option>
                         <option value="Admin">Admin</option>
                         <option value="Super Admin">Super Admin</option>
-                        <option value="PPTK">PPTK / Kasi</option>
-                        <option value="Camat">Camat</option>
-                        <option value="Sekcam">Sekcam</option>
                       </select>
                     </div>
 
