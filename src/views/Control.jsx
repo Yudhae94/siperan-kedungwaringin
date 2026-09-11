@@ -39,7 +39,8 @@ function Control({ programs, setPrograms, onUpload, canWrite, notify, spjList, s
   const submitSpj = e => {
     e.preventDefault()
     if (!canWrite) return
-    const form = new FormData(e.currentTarget)
+    const formEl = e.currentTarget
+    const form = new FormData(formEl)
     const payload = new FormData()
     const file = form.get('file')
     if (file && file.name) payload.append('file', file)
@@ -53,7 +54,7 @@ function Control({ programs, setPrograms, onUpload, canWrite, notify, spjList, s
     payload.append('catatan', form.get('catatan'))
     fetch('/api/spj', { method: 'POST', credentials: 'include', body: payload })
       .then(async r => { const data = await r.json().catch(() => null); if (!r.ok) throw new Error(data?.error || 'Gagal menyimpan SPJ'); return data })
-      .then(row => { setSpjList(list => [row, ...list]); e.currentTarget.reset(); notify('SPJ berhasil disimpan dan masuk review Subag Perencanaan & Keuangan') })
+      .then(row => { setSpjList(list => [row, ...list]); formEl.reset(); notify('SPJ berhasil disimpan dan masuk review Subag Perencanaan & Keuangan') })
       .catch(err => notify(err.message || 'Gagal menyimpan SPJ'))
   }
 
