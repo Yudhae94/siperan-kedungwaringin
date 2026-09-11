@@ -4,12 +4,11 @@
 //   - Selain itu -> dilayani sebagai file statis dari [assets] (SPA fallback ke index.html).
 // Wajib set Variables di dashboard Workers: API_ORIGIN = https://<tunnel-anda> (tanpa trailing slash).
 
-const API_TIMEOUT_MS = Number(API_TIMEOUT ?? 25000)
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
     const apiOrigin = (env.API_ORIGIN || '').replace(/\/+$/, '')
+    const apiTimeoutMs = Number(env.API_TIMEOUT_MS ?? 25000)
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
       if (!apiOrigin) {
         return Response.json(
@@ -19,7 +18,7 @@ export default {
       }
       const target = new URL(url.pathname + url.search, apiOrigin)
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort('api-timeout'), API_TIMEOUT_MS)
+      const timer = setTimeout(() => controller.abort('api-timeout'), apiTimeoutMs)
       try {
         const proxied = new Request(target.toString(), {
           method: request.method,
