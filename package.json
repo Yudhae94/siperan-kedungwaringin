@@ -11,6 +11,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "db:migrate": "node scripts/migrate-sqlite-to-mysql.mjs",
     "db:reset": "node scripts/reset-database.mjs",
+    "db:clear-eusulan": "node scripts/clear-eusulan.mjs",
     "test:smoke": "node scripts/smoke-test-mysql.mjs"
   },
   "dependencies": {

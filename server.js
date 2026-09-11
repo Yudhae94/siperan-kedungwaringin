@@ -631,7 +631,7 @@ app.delete('/api/admin-contacts/:id', auth, superAdminOnly, (req, res) => {
 
 registerClinic(app, db, auth, write, superAdminOnly, uploadsDir)
 
-app.get('/api/programs', auth, (req, res) => res.json(db.prepare('SELECT * FROM programs').all()))
+app.get('/api/programs', auth, (req, res) => res.json(db.prepare("SELECT * FROM programs WHERE kode <> '__EMPTY__'").all()))
 app.post('/api/programs', auth, write, (req, res) => {
   const b = req.body
   if (!String(b.nama || '').trim()) return res.status(400).json({ error: 'Nama usulan kegiatan wajib diisi.' })
