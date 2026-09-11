@@ -42,22 +42,9 @@ export default {
         const headers = new Headers(upstream.headers)
         headers.delete('content-encoding')
         headers.delete('content-length')
-        // Cookie sesi dari Express dibuat untuk domain tunnel backend.
-        // Tulis ulang Domain agar cookie tersimpan di domain Worker (antar captcha -> login satu sesi).
-        const rewritten = []
-        for (const [key, value] of headers.entries()) {
-          if (key.toLowerCase() === 'set-cookie') rewritten.push(value)
-        }
-        if (rewritten.length) {
-          headers.delete('set-cookie')
-          const workerHost = url.hostname
-          for (const cookie of rewritten) {
-            let fixed = cookie.replace(/;\s*Domain=[^;]*/gi, '')
-            if (!/;\s*Secure/gi.test(fixed)) fixed += '; Secure'
-            fixed += `; Domain=${workerHost}`
-            headers.append('set-cookie', fixed)
-          }
-        }
+        // Cookie sesi Express (lax, tanpa Secure) sudah valid untuk browser
+        // selama Worker mem-proxy dengan domain yang sama. Teruskan apa adanya
+        // agar captcha -> login tetap satu sesi. Jangan tulis ulang Domain.
         return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers })
       } catch (error) {
         return Response.json(

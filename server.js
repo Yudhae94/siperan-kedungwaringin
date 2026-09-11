@@ -353,11 +353,14 @@ seed()
 const app = express()
 app.set('trust proxy', 1)
 app.use(express.json({ limit: '2mb' }))
+// Catatan: cookie sesi HARUS default (lax, tanpa secure) agar login lokal (HTTP)
+// dan login via Worker-proxy tetap satu sesi. Jangan set sameSite:'none'/secure
+// kecuali seluruh akses sudah full-HTTPS satu domain.
 app.use(session({
   secret: process.env.SESSION_SECRET || 'siperan-local-secret',
   resave: false,
   saveUninitialized: true,
-  cookie: { httpOnly: true, sameSite: 'none', secure: true, maxAge: 12 * 60 * 60 * 1000 }
+  cookie: { httpOnly: true, sameSite: 'lax', maxAge: 12 * 60 * 60 * 1000 }
 }))
 
 const auth = (req, res, next) => req.session.user ? next() : res.status(401).json({ error: 'Unauthorized' })
