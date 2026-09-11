@@ -1,5 +1,8 @@
 name = "siperan-kedungwaringin"
-main = "worker.js"
+# NONAKTIF SEMENTARA (fokus demo lokal): worker proxy dimatikan agar tidak ada
+# request /api yang keluar ke Cloudflare. Aktifkan lagi dengan membuka komentar
+# `main` dan mengisi [vars] API_ORIGIN.
+# main = "worker.js"
 compatibility_date = "2025-08-01"
 
 # Frontend statis dari hasil `npm run build` (folder dist/).
@@ -8,6 +11,6 @@ compatibility_date = "2025-08-01"
 directory = "./dist"
 not_found_handling = "single-page-application"
 
-[vars]
-API_ORIGIN = "https://dollar-managed-tear-knitting.trycloudflare.com"
+# [vars]
+# API_ORIGIN = "https://NAMA-TUNNEL-BACKEND.trycloudflare.com"
 

@@ -67,12 +67,13 @@ const progId = r.json?.id
 check('POST programs', r.status === 200 && progId, JSON.stringify(r.json).slice(0, 120))
 r = await req('PATCH', `/api/programs/${progId}`, { nama: 'Uji Migrasi MySQL v2', target: 6 })
 check('PATCH programs', r.status === 200 && r.json?.nama === 'Uji Migrasi MySQL v2', JSON.stringify(r.json).slice(0, 120))
-r = await req('DELETE', `/api/programs/${progId}`)
-check('DELETE programs', r.status === 200, JSON.stringify(r.json))
 
 // 4. Login superadmin → uji PATCH identik (semantik FOUND_ROWS)
+// Hapus program uji memakai superadmin (sesuai aturan: hanya Super Admin boleh hapus).
 r = await login('superadmin', 'superadmin123')
 check('login superadmin', r.status === 200 && r.json?.role === 'Super Admin', JSON.stringify(r.json))
+r = await req('DELETE', `/api/programs/${progId}`)
+check('DELETE programs', r.status === 200, JSON.stringify(r.json))
 
 const list = (await req('GET', '/api/section-approvals')).json
 const section = list?.[0]?.section
