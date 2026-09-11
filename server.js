@@ -1160,7 +1160,9 @@ app.get('/api/lka', auth, (req, res) => {
   const spj = db.prepare("SELECT * FROM spj_pencairan WHERE status = 'Selesai Dicairkan'").all()
   const rows = programs.map(p => {
     const paid = spj.filter(s => s.program_id === p.id)
-    const realisasi = paid.reduce((n, s) => n + s.nilai_pencairan, 0)
+    const spent = paid.reduce((n, s) => n + Number(s.nilai_pencairan || 0), 0)
+    // Jika kegiatan sudah Selesai, nilai serapan dibuat otomatis = pagu (100%).
+    const realisasi = String(p.status || '').toLowerCase() === 'selesai' ? Number(p.pagu || 0) : spent
     return {
       kode: p.kode,
       nama: p.nama,

@@ -58,13 +58,16 @@ export function buildEvaluationReport(db, query) {
     const paid = payments.filter(s => s.program_id === p.id && s.paid_at && s.paid_at.slice(0, 10) >= `${period.tahun}-01-01` && s.paid_at.slice(0, 10) <= period.end)
     const cumulative = round(paid.reduce((n, s) => n + s.nilai_pencairan, 0))
     const current = round(paid.filter(s => s.paid_at.slice(0, 10) >= period.start).reduce((n, s) => n + s.nilai_pencairan, 0))
-    const serapan = ratio(cumulative, p.pagu)
+    const isSelesai = String(p.status || '').toLowerCase() === 'selesai'
+    const effCumulative = isSelesai ? round(Number(p.pagu || 0)) : cumulative
+    const effCurrent = isSelesai && current <= 0 ? effCumulative : current
+    const serapan = isSelesai ? 100 : ratio(cumulative, p.pagu)
     const deviasi = entry ? round(entry.realisasi_fisik - entry.target_fisik) : null
     const fresh = entry?.periode === period.end.slice(0, 7)
     const overdue = p.deadline && p.deadline <= period.end && entry?.realisasi_fisik < 100
     const status = !fresh ? 'Belum dilaporkan' : deviasi < 0 || overdue || entry.kendala.trim() ? 'Terhambat' : 'Tepat waktu'
     return { program_id: p.id, kode: p.kode, nama: p.nama, bidang: p.bidang, penanggung: p.penanggung, deadline: p.deadline,
-      pagu: p.pagu, realisasi_periode: current, realisasi_kumulatif: cumulative, sisa: round(p.pagu - cumulative), serapan,
+      pagu: p.pagu, realisasi_periode: effCurrent, realisasi_kumulatif: effCumulative, sisa: round(Number(p.pagu || 0) - effCumulative), serapan,
       entry: entry || null, deviasi, deviasi_anggaran: entry && serapan !== null ? round(serapan - entry.target_anggaran) : null,
       status, capaian_output: entry ? ratio(entry.realisasi_output, entry.target_output) : null,
       capaian_outcome: entry ? ratio(entry.realisasi_outcome, entry.target_outcome) : null }

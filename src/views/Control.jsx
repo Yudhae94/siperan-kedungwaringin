@@ -19,8 +19,9 @@ function Control({ programs, setPrograms, onUpload, canWrite, notify, spjList, s
   const [selected, setSelected] = useState(programs[0]?.id)
   const current = programs.find(p => p.id === selected) || programs[0]
   const currentPercent = current && current.target ? Math.min(100, Math.round((current.realisasi / current.target) * 100)) : 0
-  const usedBudget = current ? Math.min(current.pagu, Math.round((currentPercent / 100) * current.pagu)) : 0
-  const remainingBudget = current ? Math.max(0, current.pagu - usedBudget) : 0
+  const isCurrentSelesai = String(current?.status || '').toLowerCase() === 'selesai'
+  const usedBudget = current ? (isCurrentSelesai ? Number(current.pagu || 0) : Math.min(current.pagu, Math.round((currentPercent / 100) * current.pagu))) : 0
+  const remainingBudget = current ? Math.max(0, Number(current.pagu || 0) - usedBudget) : 0
   const [spjForm, setSpjForm] = useState({ program_id: '', nama_kegiatan: '', nilai_pencairan: '', progres_fisik: '', progres_keuangan: '', no_spj: '', tanggal_spj: '', catatan: '' })
   const [kartuForm, setKartuForm] = useState({ program_id: '', nama_kegiatan: '', tahapan: '' })
   const [dpaForm, setDpaForm] = useState({ usulan_id: '', nama_kegiatan: '', pagu: '', rincian: '' })
