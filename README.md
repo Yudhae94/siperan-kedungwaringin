@@ -102,6 +102,9 @@ Dokumen yang diunggah disimpan secara nyata di folder `uploads/` di dalam projec
 | User | `user` | `user123` |
 | Admin | `admin` | `admin123` |
 | Super Admin | `superadmin` | `superadmin123` |
+| PPTK | `pptk` | `pptk123` |
+| Camat | `camat` | `camat123` |
+| Sekcam | `sekcam` | `sekcam123` |
 
 Super Admin dapat melihat daftar pengguna dan jumlah aktivitas autentikasi dari menu Pengaturan & Bantuan.
 

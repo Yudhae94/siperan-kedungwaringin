@@ -156,6 +156,9 @@ const seed = () => {
     u.run(1, 'user', hashPassword('user123'), 'Pengguna SIPERAN', 'User', 'Kasi Pelayanan Publik', 'Aktif', now)
     u.run(2, 'admin', hashPassword('admin123'), 'Admin', 'Admin', 'Sekretariat - Bagian Perencanaan dan Keuangan', 'Aktif', now)
     u.run(3, 'superadmin', hashPassword('superadmin123'), 'Super Admin', 'Super Admin', 'Sekretariat - Bagian Umum dan Kepegawaian', 'Aktif', now)
+    u.run(4, 'pptk', hashPassword('pptk123'), 'PPTK Kecamatan', 'PPTK', 'Kasi Ekonomi dan Pembangunan', 'Aktif', now)
+    u.run(5, 'camat', hashPassword('camat123'), 'Camat Kedungwaringin', 'Camat', 'Camat', 'Aktif', now)
+    u.run(6, 'sekcam', hashPassword('sekcam123'), 'Sekretaris Camat', 'Sekcam', 'Sekretariat - Bagian Umum dan Kepegawaian', 'Aktif', now)
   } else {
     db.prepare("UPDATE users SET name = 'Admin' WHERE username = 'admin' AND name <> 'Admin'").run()
     for (const [uname, pass] of [['user', 'user123'], ['admin', 'admin123'], ['superadmin', 'superadmin123']]) {
@@ -951,7 +954,12 @@ app.get('/api/spj', auth, (req, res) => {
   res.json(rows.map(r => ({ ...r, riwayat: history.filter(h => h.spj_id === r.id) })))
 })
 
-app.post('/api/spj', auth, write, upload.single('file'), (req, res) => {
+app.post('/api/spj', auth, (req, res, next) => {
+  if (!['PPTK', 'Admin', 'Super Admin'].includes(req.session.user.role)) {
+    return res.status(403).json({ error: 'Input SPJ & progres hanya dapat dilakukan oleh PPTK atau Admin Subag Perencanaan & Keuangan.' })
+  }
+  next()
+}, upload.single('file'), (req, res) => {
   const b = req.body || {}
   const now = new Date().toISOString()
   const file = req.file
@@ -989,12 +997,38 @@ app.post('/api/spj', auth, write, upload.single('file'), (req, res) => {
   res.json({ ...row, riwayat: db.prepare('SELECT * FROM spj_riwayat WHERE spj_id=? ORDER BY id DESC').all(spjId) })
 })
 
-app.patch('/api/spj/:id', auth, write, (req, res) => {
+app.patch('/api/spj/:id', auth, (req, res) => {
   const row = db.prepare('SELECT * FROM spj_pencairan WHERE id=?').get(req.params.id)
   if (!row) return res.status(404).json({ error: 'Data SPJ tidak ditemukan.' })
   const b = req.body || {}
-  if (b.status && req.session.user.role !== 'Super Admin') {
-    return res.status(403).json({ error: 'Hanya Super Admin yang dapat mengubah status verifikasi SPJ.' })
+  const role = req.session.user.role
+  const canInputProgress = ['PPTK', 'Admin', 'Super Admin'].includes(role)
+  // ==== Validasi perubahan data (bukan status): hanya PPTK/Admin/Super Admin ====
+  const hasDataChange = ['nilai_pencairan', 'progres_fisik', 'progres_keuangan', 'catatan'].some(k => b[k] !== undefined)
+  if (hasDataChange && !canInputProgress) {
+    return res.status(403).json({ error: 'Hanya PPTK atau Admin yang dapat memperbarui data progres SPJ.' })
+  }
+  // ==== Workflow status verifikasi SPJ per-role (bertahap) ====
+  // Review Subag -> Admin/Super Admin | Penandatanganan Camat/Sekcam -> Camat/Sekcam (atau Admin/SA) | Tahap Pencairan -> Admin/Super Admin
+  if (b.status !== undefined && b.status !== row.status) {
+    if (!SPJ_STAGES.includes(b.status)) {
+      return res.status(400).json({ error: 'Status tidak valid.' })
+    }
+    const from = SPJ_STAGES.indexOf(row.status)
+    const to = SPJ_STAGES.indexOf(b.status)
+    const isSuperAdmin = role === 'Super Admin'
+    const isAdmin = role === 'Admin' || isSuperAdmin
+    const isSigner = ['Camat', 'Sekcam', 'Admin', 'Super Admin'].includes(role)
+    let allowed = false
+    if (isSuperAdmin) {
+      allowed = true // Super Admin dapat memindahkan ke tahap mana pun
+    } else if (to === from + 1) {
+      // hanya maju satu tahap, sesuai penanggung jawab tahap tersebut
+      allowed = (to === 1 && isAdmin) || (to === 2 && isSigner) || (to === 3 && isAdmin)
+    }
+    if (!allowed) {
+      return res.status(403).json({ error: `Role ${role} tidak dapat mengubah status SPJ dari \"${row.status}\" menjadi \"${b.status}\". Alur: review Subag (Admin) -> penandatanganan Camat/Sekcam -> pencairan.` })
+    }
   }
   const now = new Date().toISOString()
   const num = (val, fallback) => {

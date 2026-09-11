@@ -712,6 +712,9 @@ graph LR
 | Super Admin | `superadmin` | `superadmin123` |
 | Admin | `admin` | `admin123` |
 | User | `user` | `user123` |
+| PPTK | `pptk` | `pptk123` |
+| Camat | `camat` | `camat123` |
+| Sekcam | `sekcam` | `sekcam123` |
 
 ## 🛠️ Tech Stack
 
