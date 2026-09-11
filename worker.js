@@ -20,9 +20,18 @@ export default {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort('api-timeout'), apiTimeoutMs)
       try {
+        // Sanitasi header yang tidak boleh diteruskan lintas origin:
+        // host/cf-* milik Worker, content-length/encoding dihitung ulang oleh runtime.
+        const forwardHeaders = new Headers(request.headers)
+        forwardHeaders.delete('host')
+        forwardHeaders.delete('content-length')
+        forwardHeaders.delete('content-encoding')
+        for (const key of [...forwardHeaders.keys()]) {
+          if (key.startsWith('cf-') || key.startsWith('x-forwarded-') || key === 'x-real-ip') forwardHeaders.delete(key)
+        }
         const proxied = new Request(target.toString(), {
           method: request.method,
-          headers: request.headers,
+          headers: forwardHeaders,
           body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
           redirect: 'manual',
           signal: controller.signal,
@@ -33,6 +42,22 @@ export default {
         const headers = new Headers(upstream.headers)
         headers.delete('content-encoding')
         headers.delete('content-length')
+        // Cookie sesi dari Express dibuat untuk domain tunnel backend.
+        // Tulis ulang Domain agar cookie tersimpan di domain Worker (antar captcha -> login satu sesi).
+        const rewritten = []
+        for (const [key, value] of headers.entries()) {
+          if (key.toLowerCase() === 'set-cookie') rewritten.push(value)
+        }
+        if (rewritten.length) {
+          headers.delete('set-cookie')
+          const workerHost = url.hostname
+          for (const cookie of rewritten) {
+            let fixed = cookie.replace(/;\s*Domain=[^;]*/gi, '')
+            if (!/;\s*Secure/gi.test(fixed)) fixed += '; Secure'
+            fixed += `; Domain=${workerHost}`
+            headers.append('set-cookie', fixed)
+          }
+        }
         return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers })
       } catch (error) {
         return Response.json(

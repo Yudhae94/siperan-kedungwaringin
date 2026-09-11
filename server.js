@@ -351,12 +351,13 @@ CREATE TABLE IF NOT EXISTS kartu_kendali (
 seed()
 
 const app = express()
+app.set('trust proxy', 1)
 app.use(express.json({ limit: '2mb' }))
 app.use(session({
   secret: process.env.SESSION_SECRET || 'siperan-local-secret',
   resave: false,
-  saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax' }
+  saveUninitialized: true,
+  cookie: { httpOnly: true, sameSite: 'none', secure: true, maxAge: 12 * 60 * 60 * 1000 }
 }))
 
 const auth = (req, res, next) => req.session.user ? next() : res.status(401).json({ error: 'Unauthorized' })
