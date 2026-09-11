@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, BadgeCheck, Banknote, ClipboardList, FileText, Plus, Upload } from 'lucide-react'
+import { Activity, BadgeCheck, Banknote, ClipboardList, FileText, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import Button from '../components/Button'
 import PageTitle from '../components/PageTitle'
 import { api } from '../services/api'
@@ -89,12 +89,35 @@ function Control({ programs, setPrograms, onUpload, canWrite, notify, spjList, s
   const submitDpa = e => {
     e.preventDefault()
     if (!canWrite) return
-    const f = new FormData(e.currentTarget)
+    const formEl = e.currentTarget
+    const f = new FormData(formEl)
     const usulan = usulanRka.find(u => u.id === Number(f.get('usulan_id')))
     const rincian = usulan ? [{ uraian: usulan.judul, pagu: Number(f.get('pagu')) || 0 }] : []
     api('/dpa', { method: 'POST', body: JSON.stringify({ usulan_id: f.get('usulan_id'), nama_kegiatan: f.get('nama_kegiatan'), bidang: usulan?.bidang || '', pagu: Number(f.get('pagu')) || 0, rincian }) })
-      .then(row => { setDpaList(list => [row, ...list]); e.currentTarget.reset(); notify('DPA berhasil disusun') })
+      .then(row => { setDpaList(list => [row, ...list]); formEl.reset(); notify('DPA berhasil disusun') })
       .catch(err => notify(err.message || 'Gagal menyusun DPA'))
+  }
+
+  // ==== Hak akses DPA: update = Admin/Super Admin, delete = Super Admin saja ====
+  const canUpdateDpa = ['Admin', 'Super Admin'].includes(role)
+  const canDeleteDpa = isSuperAdmin
+
+  const updateDpa = (id, field, value, item) => {
+    if (!canUpdateDpa) return
+    const payload = field === 'status'
+      ? { status: value }
+      : { nama_kegiatan: value, pagu: Number(item.pagu) || 0 }
+    api(`/dpa/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+      .then(updated => { setDpaList(list => list.map(d => d.id === updated.id ? updated : d)); notify(field === 'status' ? `Status DPA diubah menjadi: ${updated.status}` : 'DPA berhasil diperbarui') })
+      .catch(err => notify(err.message || 'Gagal memperbarui DPA'))
+  }
+
+  const deleteDpa = id => {
+    if (!canDeleteDpa) return
+    if (!window.confirm('Hapus DPA ini? Tindakan tidak dapat dibatalkan.')) return
+    api(`/dpa/${id}`, { method: 'DELETE' })
+      .then(() => { setDpaList(list => list.filter(d => d.id !== id)); notify('DPA berhasil dihapus') })
+      .catch(err => notify(err.message || 'Gagal menghapus DPA'))
   }
 
   const refreshLka = () => {
@@ -138,7 +161,11 @@ function Control({ programs, setPrograms, onUpload, canWrite, notify, spjList, s
         {canWrite ? <form className="form-grid" onSubmit={submitDpa}><label>Usulan disetujui<select required name="usulan_id"><option value="">Pilih usulan</option>{usulanRka.filter(u => u.status === 'Disetujui').map(u => <option key={u.id} value={u.id}>{u.judul}</option>)}</select></label><label>Nama kegiatan<input required name="nama_kegiatan" placeholder="Nama kegiatan DPA" /></label><label>Pagu (Rp)<input required name="pagu" type="number" min="0" /></label><button className="primary full" type="submit"><Plus size={17}/> Simpan DPA</button></form> : <p className="muted">Mode baca saja.</p>}
       </section>
       <section className="card table-card"><div className="card-head"><div><h2>Daftar DPA</h2><p>{dpaList.length} DPA terdaftar</p></div></div>
-        {dpaList.length ? <div className="table-scroll"><table><thead><tr><th>Kegiatan</th><th>Bidang</th><th>Pagu</th><th>Status</th></tr></thead><tbody>{dpaList.map(d => <tr key={d.id}><td><b>{d.nama_kegiatan}</b><small>{d.kode_kegiatan || ''}</small></td><td>{d.bidang || '-'}</td><td>{rupiah(d.pagu)}</td><td><span className={`status ${d.status === 'Draft' ? 'warn' : 'done'}`}>{d.status}</span></td></tr>)}</tbody></table></div> : <p className="muted">Belum ada DPA yang disusun.</p>}
+        {dpaList.length ? <div className="table-scroll"><table><thead><tr><th>Kegiatan</th><th>Bidang</th><th>Pagu</th><th>Status</th>{canUpdateDpa && <th>Aksi</th>}</tr></thead><tbody>{dpaList.map(d => <tr key={d.id}><td><b>{d.nama_kegiatan}</b><small>{d.kode_kegiatan || ''}</small></td><td>{d.bidang || '-'}</td><td>{rupiah(d.pagu)}</td><td><span className={`status ${d.status === 'Draft' ? 'warn' : 'done'}`}>{d.status}</span></td>{canUpdateDpa && <td><div className="row-actions">
+          <button className="secondary xs" type="button" title="Update nama kegiatan" onClick={() => { const nama = window.prompt('Nama kegiatan DPA baru:', d.nama_kegiatan); if (nama && nama.trim() && nama !== d.nama_kegiatan) updateDpa(d.id, 'nama', nama.trim(), d) }}><Pencil size={13}/> Update</button>
+          <select className="table-select" value={d.status} onChange={e => updateDpa(d.id, 'status', e.target.value)}><option>Draft</option><option>Disetujui</option></select>
+          {canDeleteDpa && <button className="table-action danger xs" type="button" title="Hapus (Super Admin saja)" onClick={() => deleteDpa(d.id)}><Trash2 size={13}/> Hapus</button>}
+        </div></td>}</tr>)}</tbody></table></div> : <p className="muted">Belum ada DPA yang disusun.</p>}
       </section></>}
   </>
 }
